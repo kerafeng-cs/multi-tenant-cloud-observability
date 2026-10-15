@@ -1,4 +1,4 @@
-import { tenant, user } from '../../common/testing/fixtures';
+import { IDS, tenant, user } from '../../common/testing/fixtures';
 import type {
   GrafanaClient,
   GrafanaOrgMembership,
@@ -21,8 +21,8 @@ import { displayName, GrafanaUserMirror } from './grafana-user.mirror';
 function platformAdmin(overrides: Partial<UserRecord> = {}): UserRecord {
   return user({
     role: 'platform-admin',
-    tenantId: null,
-    tenantKey: null,
+    tenantId: IDS.adminTenant,
+    tenantKey: 'admin-tenant',
     ...overrides,
   });
 }
@@ -180,14 +180,15 @@ describe('GrafanaUserMirror (platform admins, model C)', () => {
     const { mirror, grafana } = setup({
       user: platformAdmin(),
       orgs: [
-        { orgId: 1, name: 'admin-tenant', role: 'Admin' },
+        { orgId: 1, name: 'admin-tenant', role: 'Editor' },
         { orgId: 7, name: 'alpha-tenant', role: 'Editor' },
       ],
     });
 
     await mirror.sync('u1');
 
-    expect(grafana.updateOrgUserRole).toHaveBeenCalledWith(1, 42, 'Editor');
+    // Platform admins are Admin of the platform org (mentor, 2026-10-14).
+    expect(grafana.updateOrgUserRole).toHaveBeenCalledWith(1, 42, 'Admin');
     expect(grafana.addOrgUser).not.toHaveBeenCalled();
     expect(grafana.removeOrgUser).toHaveBeenCalledWith(7, 42);
     expect(grafana.removeOrgUser).toHaveBeenCalledTimes(1);
@@ -197,7 +198,7 @@ describe('GrafanaUserMirror (platform admins, model C)', () => {
     const { mirror, grafana } = setup({
       user: platformAdmin(),
       grants: [{ grafanaOrgId: 7, role: 'Viewer' }],
-      orgs: [{ orgId: 1, name: 'admin-tenant', role: 'Editor' }],
+      orgs: [{ orgId: 1, name: 'admin-tenant', role: 'Admin' }],
     });
 
     await mirror.sync('u1');
@@ -219,7 +220,7 @@ describe('GrafanaUserMirror (platform admins, model C)', () => {
         { grafanaOrgId: 7, role: 'Editor' },
       ],
       orgs: [
-        { orgId: 1, name: 'admin-tenant', role: 'Editor' },
+        { orgId: 1, name: 'admin-tenant', role: 'Admin' },
         { orgId: 7, name: 'alpha-tenant', role: 'Viewer' },
       ],
     });
@@ -233,7 +234,7 @@ describe('GrafanaUserMirror (platform admins, model C)', () => {
     const { mirror, grafana } = setup({
       user: platformAdmin(),
       grants: [{ grafanaOrgId: 1, role: 'Viewer' }],
-      orgs: [{ orgId: 1, name: 'admin-tenant', role: 'Editor' }],
+      orgs: [{ orgId: 1, name: 'admin-tenant', role: 'Admin' }],
     });
 
     await mirror.sync('u1');

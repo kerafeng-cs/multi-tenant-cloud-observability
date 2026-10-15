@@ -17,9 +17,9 @@ export interface Actor {
   username: string;
   email: string;
   role: Role;
-  /** null for platform admins. */
-  tenantId: string | null;
-  tenantKey: string | null;
+  /** Platform admins: the platform tenant (admin-tenant). */
+  tenantId: string;
+  tenantKey: string;
 }
 
 export function isPlatformAdmin(actor: Actor): boolean {

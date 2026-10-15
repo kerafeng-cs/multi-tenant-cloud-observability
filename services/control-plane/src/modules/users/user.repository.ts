@@ -9,8 +9,9 @@ export type UserStatus = 'active' | 'deleted';
 export interface UserRecord {
   id: string;
   keycloakUserId: string | null;
-  tenantId: string | null;
-  tenantKey: string | null;
+  /** Platform admins: the platform tenant (admin-tenant). */
+  tenantId: string;
+  tenantKey: string;
   username: string;
   email: string;
   firstName: string | null;
@@ -23,7 +24,7 @@ export interface UserRecord {
 }
 
 export interface NewUser {
-  tenantId: string | null;
+  tenantId: string;
   username: string;
   email: string;
   firstName: string | null;
@@ -34,8 +35,8 @@ export interface NewUser {
 interface UserRow {
   id: string;
   keycloak_user_id: string | null;
-  tenant_id: string | null;
-  tenant_key: string | null;
+  tenant_id: string;
+  tenant_key: string;
   username: string;
   email: string;
   first_name: string | null;
@@ -52,7 +53,7 @@ const SELECT = `
          u.email, u.first_name, u.last_name, u.role, u.enabled,
          u.grafana_user_id, u.status, u.created_at
   FROM users u
-  LEFT JOIN tenants t ON t.id = u.tenant_id
+  JOIN tenants t ON t.id = u.tenant_id
 `;
 
 /** Unique indexes from migration 005 (active users only, case-insensitive). */

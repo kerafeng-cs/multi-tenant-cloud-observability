@@ -54,8 +54,8 @@ const PEOPLE = {
     keycloakUserId: 'kc-root',
     username: 'root-admin',
     role: 'platform-admin',
-    tenantId: null,
-    tenantKey: null,
+    tenantId: IDS.adminTenant,
+    tenantKey: 'admin-tenant',
   }),
   alphaAdmin: user({
     id: IDS.alphaAdmin,

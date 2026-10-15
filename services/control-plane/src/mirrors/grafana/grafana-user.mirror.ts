@@ -17,7 +17,7 @@ import { DEFAULT_GRAFANA_ORG_ID } from './grafana-tenant.mirror';
 
 /** Grafana org role for each control-plane role (in its home org). */
 const ORG_ROLE: Record<Role, GrafanaOrgRole> = {
-  'platform-admin': 'Editor',
+  'platform-admin': 'Admin',
   'tenant-admin': 'Editor',
   viewer: 'Viewer',
 };
@@ -36,7 +36,7 @@ const ROLE_RANK: Record<GrafanaOrgRole, number> = {
  *   kills its sessions) and re-created when re-enabled; the next Keycloak
  *   login re-links it by email.
  * - Member of exactly the desired orgs with the desired role. Platform
- *   admins (model C, D-04): org 1 as Editor + every tenant org with an
+ *   admins (model C, D-04): org 1 as Admin + every tenant org with an
  *   active support-access grant (strongest role wins).
  */
 @Injectable()
@@ -76,7 +76,7 @@ export class GrafanaUserMirror implements MirrorHandler {
 
     if (desired.size === 0) {
       throw new Error(
-        `Grafana org of tenant ${user.tenantKey ?? '?'} is not provisioned yet`,
+        `Grafana org of tenant ${user.tenantKey} is not provisioned yet`,
       );
     }
 

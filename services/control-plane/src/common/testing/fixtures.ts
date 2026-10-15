@@ -76,8 +76,8 @@ export const ACTORS: Record<
     username: 'root-admin',
     email: 'root@example.com',
     role: 'platform-admin',
-    tenantId: null,
-    tenantKey: null,
+    tenantId: IDS.adminTenant,
+    tenantKey: 'admin-tenant',
   },
   alphaAdmin: {
     userId: IDS.alphaAdmin,

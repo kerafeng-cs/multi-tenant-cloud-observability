@@ -11,12 +11,10 @@ export class UserView {
   id!: string;
 
   @ApiProperty({
-    type: String,
-    nullable: true,
     example: 'alpha-tenant',
-    description: 'null for platform admins',
+    description: 'Platform admins: the platform tenant (admin-tenant)',
   })
-  tenantKey!: string | null;
+  tenantKey!: string;
 
   @ApiProperty({ example: 'alpha-viewer' })
   username!: string;

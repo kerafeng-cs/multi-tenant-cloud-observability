@@ -30,6 +30,8 @@ export interface UpdateUserInput {
 }
 
 export interface NewPlatformAdmin {
+  /** The platform tenant (admin-tenant). */
+  tenantId: string;
   username: string;
   email: string;
   password: string;
@@ -137,7 +139,7 @@ export class UsersService {
   async createPlatformAdmin(input: NewPlatformAdmin): Promise<UserRecord> {
     return this.createWithIdentity(
       {
-        tenantId: null,
+        tenantId: input.tenantId,
         username: input.username.toLowerCase(),
         email: input.email.toLowerCase(),
         firstName: input.firstName,

@@ -7,6 +7,7 @@ import {
 
 import { DatabaseService } from '../../common/db/database.service';
 import { AppConfig } from '../../config/app-config';
+import { TenantRepository } from '../tenants/tenant.repository';
 import { UserRepository } from '../users/user.repository';
 import { UsersService } from '../users/users.service';
 
@@ -25,8 +26,10 @@ export type BootstrapOutcome =
  * active platform admin, creates the initial one from PLATFORM_ADMIN_*
  * (secret platform-admin) through the normal user-create path (DB row +
  * Keycloak account inline + outbox). Retries until Keycloak answers.
- * Tenant groups (incl. admin-tenant's) are created by the Keycloak tenant
- * mirror through the startup resync.
+ * The admin belongs to the platform tenant (GRAFANA_DEFAULT_TENANT,
+ * admin-tenant, seeded by migration 001). Tenant groups (incl.
+ * admin-tenant's) are created by the Keycloak tenant mirror through the
+ * startup resync.
  *
  * Safety: a deleted initial admin is never resurrected; a username that
  * belongs to a tenant user is never promoted. With several replicas only
@@ -45,6 +48,7 @@ export class PlatformBootstrapService
   constructor(
     private readonly db: DatabaseService,
     private readonly users: UserRepository,
+    private readonly tenants: TenantRepository,
     private readonly usersService: UsersService,
     private readonly config: AppConfig,
   ) {}
@@ -110,7 +114,19 @@ export class PlatformBootstrapService
       return 'refused';
     }
 
+    const platformTenant = await this.tenants.findByKey(
+      this.config.grafana.defaultTenant,
+    );
+
+    if (platformTenant?.status !== 'active') {
+      this.logger.error(
+        `Initial platform admin not created: platform tenant ${this.config.grafana.defaultTenant} does not exist`,
+      );
+      return 'refused';
+    }
+
     await this.usersService.createPlatformAdmin({
+      tenantId: platformTenant.id,
       username,
       email: admin.email,
       password: admin.password,

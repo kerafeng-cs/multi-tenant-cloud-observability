@@ -162,19 +162,14 @@ export class KeycloakUserMirror implements MirrorHandler {
     }
   }
 
+  /** The tenant's group (platform admins: admin-tenant's). */
   private async desiredGroupId(user: UserRecord): Promise<string | null> {
-    if (user.role === 'platform-admin') {
-      return null;
-    }
-
-    const tenant = user.tenantId
-      ? await this.tenants.findById(user.tenantId)
-      : null;
+    const tenant = await this.tenants.findById(user.tenantId);
 
     if (!tenant?.keycloakGroupId) {
       // Retried by the outbox once the tenant group exists.
       throw new Error(
-        `Keycloak group of tenant ${user.tenantKey ?? '?'} is not ready yet`,
+        `Keycloak group of tenant ${user.tenantKey} is not ready yet`,
       );
     }
 

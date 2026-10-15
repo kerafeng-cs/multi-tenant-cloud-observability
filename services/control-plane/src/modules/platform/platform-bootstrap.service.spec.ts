@@ -1,6 +1,10 @@
 import type { DatabaseService } from '../../common/db/database.service';
-import { user } from '../../common/testing/fixtures';
+import { IDS, tenant, user } from '../../common/testing/fixtures';
 import { AppConfig } from '../../config/app-config';
+import type {
+  TenantRecord,
+  TenantRepository,
+} from '../tenants/tenant.repository';
 import type { UserRecord, UserRepository } from '../users/user.repository';
 import type { UsersService } from '../users/users.service';
 
@@ -19,6 +23,7 @@ function setup(opts: {
   activeAdmins?: number;
   known?: UserRecord | null;
   lockHeldElsewhere?: boolean;
+  platformTenant?: TenantRecord | null;
 }) {
   const db = {
     withAdvisoryLock: jest.fn(
@@ -40,26 +45,52 @@ function setup(opts: {
     createPlatformAdmin: jest.fn().mockResolvedValue(user()),
   };
 
+  const tenants = {
+    findByKey: jest
+      .fn()
+      .mockResolvedValue(
+        opts.platformTenant === undefined
+          ? tenant({ id: IDS.adminTenant, tenantKey: 'admin-tenant' })
+          : opts.platformTenant,
+      ),
+  };
+
   const service = new PlatformBootstrapService(
     db as unknown as DatabaseService,
     users as unknown as UserRepository,
+    tenants as unknown as TenantRepository,
     usersService as unknown as UsersService,
     AppConfig.forTest({ platformAdmin: { ...ADMIN, ...opts.admin } }),
   );
 
-  return { service, users, usersService, db };
+  return { service, users, usersService, tenants, db };
 }
 
 describe('PlatformBootstrapService.run', () => {
-  it('creates the initial admin through the normal user path (lowercased)', async () => {
-    const { service, usersService } = setup({});
+  it('creates the initial admin in the platform tenant (lowercased)', async () => {
+    const { service, usersService, tenants } = setup({});
 
     await expect(service.run()).resolves.toBe('created');
+    expect(tenants.findByKey).toHaveBeenCalledWith('admin-tenant');
     expect(usersService.createPlatformAdmin).toHaveBeenCalledWith({
       ...ADMIN,
+      tenantId: IDS.adminTenant,
       username: 'root-admin',
     });
   });
+
+  it.each([
+    ['missing', null],
+    ['deleted', tenant({ tenantKey: 'admin-tenant', status: 'deleted' })],
+  ])(
+    'refuses when the platform tenant is %s',
+    async (_label, platformTenant) => {
+      const { service, usersService } = setup({ platformTenant });
+
+      await expect(service.run()).resolves.toBe('refused');
+      expect(usersService.createPlatformAdmin).not.toHaveBeenCalled();
+    },
+  );
 
   it('does nothing when an active platform admin exists (restart is idempotent)', async () => {
     const { service, usersService } = setup({ activeAdmins: 1 });

@@ -204,15 +204,16 @@ describe('KeycloakUserMirror (active user)', () => {
     ]);
   });
 
-  it('platform admins are in no group', async () => {
+  it('platform admins are in the platform tenant group (admin-tenant)', async () => {
     const { mirror, keycloak } = setup({
       stored: account({
         id: 'kc-root',
         username: 'root',
         attributes: { mtco_user_id: [IDS.platformAdmin] },
       }),
-      groups: [{ id: 'g-admin', name: 'admin-tenant' }],
+      groups: [{ id: 'g-alpha', name: 'alpha-tenant' }],
       roles: ['platform-admin'],
+      tenantGroup: 'g-admin',
     });
 
     await mirror.apply(
@@ -221,16 +222,16 @@ describe('KeycloakUserMirror (active user)', () => {
         keycloakUserId: 'kc-root',
         username: 'root',
         role: 'platform-admin',
-        tenantId: null,
-        tenantKey: null,
+        tenantId: IDS.adminTenant,
+        tenantKey: 'admin-tenant',
       }),
     );
 
     expect(keycloak.removeUserFromGroup).toHaveBeenCalledWith(
       'kc-root',
-      'g-admin',
+      'g-alpha',
     );
-    expect(keycloak.addUserToGroup).not.toHaveBeenCalled();
+    expect(keycloak.addUserToGroup).toHaveBeenCalledWith('kc-root', 'g-admin');
   });
 
   it('disabled: account disabled and sessions ended', async () => {
