@@ -111,7 +111,22 @@ export class KeycloakUserMirror implements MirrorHandler {
       }
 
       id = created;
-      await this.assertMarker(id, user);
+
+      try {
+        await this.assertMarker(id, user);
+      } catch (error) {
+        // I-31: the account was created by THIS call but has no marker, so
+        // every later attempt would refuse it as "not managed by MTCO".
+        // Remove it (provably ours: we just created it) and let the caller
+        // retry from a clean state.
+        await this.keycloak.deleteUser(id).catch((cleanup: unknown) => {
+          this.logger.error(
+            `${user.username}: could not remove Keycloak account ${id} after the marker check failed: ${String(cleanup)}`,
+          );
+        });
+        throw error;
+      }
+
       this.logger.log(`${user.username}: Keycloak account created`);
     } else {
       id = existing.id;

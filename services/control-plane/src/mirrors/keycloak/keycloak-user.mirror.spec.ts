@@ -124,14 +124,40 @@ describe('KeycloakUserMirror (active user)', () => {
     );
   });
 
-  it('fails loudly when Keycloak drops the marker (user profile policy)', async () => {
-    const { mirror } = setup({
+  it('fails loudly when Keycloak drops the marker and removes the account it just created (I-31)', async () => {
+    const { mirror, keycloak } = setup({
       saved: account({ id: 'kc-new', attributes: null }),
     });
 
     await expect(mirror.apply(user({ keycloakUserId: null }))).rejects.toThrow(
       /ADMIN_EDIT/,
     );
+    expect(keycloak.deleteUser).toHaveBeenCalledWith('kc-new');
+    expect(keycloak.resetPassword).not.toHaveBeenCalled();
+  });
+
+  it('keeps the original error when removing the unmarked account fails (I-31)', async () => {
+    const { mirror, keycloak } = setup({
+      saved: account({ id: 'kc-new', attributes: null }),
+    });
+
+    keycloak.deleteUser.mockRejectedValueOnce(new Error('keycloak down'));
+
+    await expect(mirror.apply(user({ keycloakUserId: null }))).rejects.toThrow(
+      /ADMIN_EDIT/,
+    );
+  });
+
+  it('never deletes an existing account whose marker check fails (only fresh creates)', async () => {
+    const { mirror, keycloak } = setup({
+      stored: account({ id: 'kc-viewer', attributes: null }),
+      saved: account({ id: 'kc-viewer', attributes: null }),
+    });
+
+    await expect(
+      mirror.apply(user({ keycloakUserId: 'kc-viewer' })),
+    ).rejects.toThrow(/ADMIN_EDIT/);
+    expect(keycloak.deleteUser).not.toHaveBeenCalled();
   });
 
   it('409 from Keycloak → identity_conflict', async () => {
