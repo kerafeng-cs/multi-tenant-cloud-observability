@@ -230,6 +230,21 @@ describe('GrafanaUserMirror (platform admins, model C)', () => {
     expect(grafana.updateOrgUserRole).toHaveBeenCalledWith(7, 42, 'Editor');
   });
 
+  it('an Admin grant makes the platform admin Admin of that tenant org (TODO-19)', async () => {
+    const { mirror, grafana } = setup({
+      user: platformAdmin(),
+      grants: [{ grafanaOrgId: 7, role: 'Admin' }],
+      orgs: [
+        { orgId: 1, name: 'admin-tenant', role: 'Admin' },
+        { orgId: 7, name: 'alpha-tenant', role: 'Viewer' },
+      ],
+    });
+
+    await mirror.sync('u1');
+
+    expect(grafana.updateOrgUserRole).toHaveBeenCalledWith(7, 42, 'Admin');
+  });
+
   it('a grant never lowers the platform org role', async () => {
     const { mirror, grafana } = setup({
       user: platformAdmin(),

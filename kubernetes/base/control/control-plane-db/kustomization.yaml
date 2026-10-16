@@ -18,3 +18,4 @@ configMapGenerator:
       - 005_identity_mirror.sql
       - 006_agent_enrollments.sql
       - 007_platform_admin_tenant.sql
+      - 008_support_access_admin.sql

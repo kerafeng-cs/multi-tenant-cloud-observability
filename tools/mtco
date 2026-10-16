@@ -45,7 +45,7 @@ Usage: mtco <command> [arguments] [options]
   enrollments list           [--tenant TENANT]   tokens with their state
   enrollments revoke ENROLLMENT_ID [--tenant TENANT]   an unused token stops working
 
-  access grant  TENANT [--minutes N] [--role Viewer|Editor]   (platform admin, for yourself)
+  access grant  TENANT [--minutes N] [--role Viewer|Editor|Admin]   (platform admin, for yourself)
   access list   [TENANT] [--active]
   access revoke TENANT GRANT_ID
   access all    [--active]                       every tenant (platform admin)

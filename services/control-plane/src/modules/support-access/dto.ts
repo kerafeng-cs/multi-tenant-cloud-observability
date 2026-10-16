@@ -11,7 +11,12 @@ import {
 
 import { trimString } from '../../common/http/validation';
 
-export const GRANT_ROLES = ['Viewer', 'Editor'] as const;
+/**
+ * Admin (TODO-19, 2026-10-16): lets a platform admin see and manage the
+ * tenant org's data sources during the grant (mentor). Tenant admins stay
+ * Editor in their own org.
+ */
+export const GRANT_ROLES = ['Viewer', 'Editor', 'Admin'] as const;
 export type GrantRole = (typeof GRANT_ROLES)[number];
 
 /** POST /tenants/{tenantKey}/support-access. Upper bound of minutes: service. */

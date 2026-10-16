@@ -126,6 +126,7 @@ export function supportTab(container, tenant) {
           options: [
             { value: 'Viewer', label: 'Viewer (read only)' },
             { value: 'Editor', label: 'Editor (can change dashboards)' },
+            { value: 'Admin', label: 'Admin (also data sources and org settings)' },
           ],
         },
       ],

@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '../../common/db/base.repository';
 import type { Queryable } from '../../common/db/database.service';
 
-export type SupportAccessRole = 'Viewer' | 'Editor';
+export type SupportAccessRole = 'Viewer' | 'Editor' | 'Admin';
 
 export interface SupportAccessRecord {
   id: string;

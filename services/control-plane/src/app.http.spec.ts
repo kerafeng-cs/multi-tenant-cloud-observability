@@ -572,6 +572,17 @@ describe('support access', () => {
     );
   });
 
+  it('grant role Admin is accepted, unknown roles → 400 (TODO-19)', async () => {
+    await call('post', base, 'root', {
+      reason: 'TICKET-2 check data sources',
+      role: 'Admin',
+    }).expect(201);
+    await call('post', base, 'root', {
+      reason: 'TICKET-3 check data sources',
+      role: 'GrafanaAdmin',
+    }).expect(400);
+  });
+
   it('tenant admins may only list; bad ?active → 400', async () => {
     await call('post', base, 'alphaAdmin', {
       reason: 'TICKET-1 check dashboards',

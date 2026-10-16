@@ -293,7 +293,7 @@ async function apiRoute(req, res, url) {
         const reason = String(body.reason ?? '').trim();
         if (reason.length < 10 || reason.length > 500) problems.push(['reason', 'reason is required (10-500 characters), e.g. a ticket id and what you need to check']);
         if (body.minutes !== undefined && (!Number.isInteger(body.minutes) || body.minutes < 5)) problems.push(['minutes', 'minutes must not be less than 5']);
-        if (body.role !== undefined && !['Viewer', 'Editor'].includes(body.role)) problems.push(['role', 'role must be one of the following values: Viewer, Editor']);
+        if (body.role !== undefined && !['Viewer', 'Editor', 'Admin'].includes(body.role)) problems.push(['role', 'role must be one of the following values: Viewer, Editor, Admin']);
         if (validation(res, problems)) return;
         if ((body.minutes ?? 60) > 480) return fail(res, 400, 'support_access_too_long', 'At most 480 minutes');
         const g = { id: uuid(), tenantKey: key, username: actor.username, role: body.role ?? 'Viewer', reason, grantedBy: actor.username, createdAt: iso(now()), expiresAt: new Date(Date.now() + (body.minutes ?? 60) * 60000).toISOString(), revokedAt: null, revokedBy: null };
