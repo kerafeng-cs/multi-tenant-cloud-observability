@@ -9,8 +9,9 @@
 # Requires: bash 4+, curl, jq.
 set -euo pipefail
 
-MTCO_API_URL="${MTCO_API_URL:-http://localhost:18081}"
-MTCO_KEYCLOAK_URL="${MTCO_KEYCLOAK_URL:-http://localhost:8080}"
+# Public names (ConfigMap platform-endpoints of the development overlay).
+MTCO_API_URL="${MTCO_API_URL:-http://mtco.test}"
+MTCO_KEYCLOAK_URL="${MTCO_KEYCLOAK_URL:-http://keycloak.mtco.test}"
 MTCO_REALM="${MTCO_REALM:-observability}"
 MTCO_CLIENT_ID="${MTCO_CLIENT_ID:-mtco-cli}"
 
@@ -55,10 +56,11 @@ Usage: mtco <command> [arguments] [options]
 give it. Ids are the "id" fields printed by the list commands.
 
 Environment:
-  MTCO_API_URL        control-plane URL            (default http://localhost:18081)
-  MTCO_KEYCLOAK_URL   Keycloak URL                 (default http://localhost:8080)
+  MTCO_API_URL        control-plane URL            (default http://mtco.test)
+  MTCO_KEYCLOAK_URL   Keycloak URL                 (default http://keycloak.mtco.test)
   MTCO_USER           your username (skips that prompt; the password is always asked)
-  MTCO_PUBLIC_URL     control-plane URL as seen from agent hosts (printed by "enroll")
+  MTCO_PUBLIC_URL     control-plane URL as seen from agent hosts (printed by "enroll";
+                      default MTCO_API_URL)
 USAGE
 }
 
@@ -172,7 +174,7 @@ login() {
       --data-urlencode "client_id=$MTCO_CLIENT_ID" \
       --data-urlencode "username=$username" \
       --data-urlencode 'password@-'
-  ) || die "cannot reach Keycloak at $MTCO_KEYCLOAK_URL (port-forward running?)"
+  ) || die "cannot reach Keycloak at $MTCO_KEYCLOAK_URL (DNS name resolvable and reachable?)"
 
   password=""
 
@@ -204,7 +206,7 @@ api() {
       "${with_body[@]}"
   ) || {
     rm -f "$out"
-    die "cannot reach control-plane at $MTCO_API_URL (port-forward running?)"
+    die "cannot reach control-plane at $MTCO_API_URL (DNS name resolvable and reachable?)"
   }
 
   if [ "$status" -ge 400 ]; then
@@ -374,7 +376,7 @@ Enrollment token for $TENANT (works once, expires $(jq -r .expiresAt <<<"$create
   $(jq -r .enrollmentToken <<<"$created")
 
 On the host, as root, in the folder with bootstrap.sh and otel/:
-  sudo ./bootstrap.sh ${MTCO_PUBLIC_URL:-<control-plane URL reachable from the host>}
+  sudo ./bootstrap.sh ${MTCO_PUBLIC_URL:-$MTCO_API_URL}
 then paste the token. Send ONLY the token to the host owner.
 If the exchange fails half-way, run bootstrap.sh again with the SAME token.
 Enrollment id (for "mtco enrollments revoke"): $(jq -r .id <<<"$created")

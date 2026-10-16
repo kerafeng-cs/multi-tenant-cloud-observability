@@ -326,6 +326,13 @@ http
   .createServer((req, res) => {
     const url = new URL(req.url, ORIGIN);
     if (url.pathname === '/__log') return send(res, 200, log);
+    // Like nginx.conf: /config.js is generated (here from the Host the
+    // browser used, so the same mock serves localhost and mtco.test).
+    if (url.pathname === '/config.js') {
+      const origin = `http://${req.headers.host}`;
+      res.writeHead(200, { 'Content-Type': 'application/javascript', 'Cache-Control': 'no-store', ...SEC });
+      return res.end(`window.MTCO_CONFIG = { keycloakUrl: '${origin}/kc', realm: 'observability', clientId: 'control-plane-ui', apiBase: '/api/v1', grafanaUrl: '${origin}/grafana', publicApiUrl: 'http://mtco.test', environment: 'development' };`);
+    }
     if (url.pathname.startsWith('/kc/')) return keycloak(req, res, url);
     if (url.pathname.startsWith('/api/')) return apiRoute(req, res, url).catch((e) => fail(res, 500, 'internal', String(e)));
     if (url.pathname.startsWith('/grafana')) {

@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# NOT part of the MTCO product. Simulates what an enterprise network
+# provides in front of the cluster (entry point + name routing) so the lab
+# cluster can be tested with the real public names *.mtco.test.
+# In a real deployment this is the mentor's ingress / load balancer / DNS.
+
+namespace: mtco-lab
+
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
+
+configMapGenerator:
+  - name: lab-edge
+    files:
+      - default.conf=edge.conf

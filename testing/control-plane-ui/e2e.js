@@ -105,7 +105,7 @@ async function platformFlow(browser) {
   await page.click('#new-enrollment');
   await page.waitForSelector('#enrollment-token');
   assert.ok((await page.innerText('#enrollment-token')).length > 20);
-  assert.match(await page.locator('.codeblock').innerText(), /sudo \.\/bootstrap\.sh http:\/\/172\.31\.16\.77:18081/);
+  assert.match(await page.locator('.codeblock').innerText(), /sudo \.\/bootstrap\.sh http:\/\/mtco\.test/);
   await page.waitForTimeout(1100);
   await shot(page, '09-token');
   await page.click('.modal-foot button:has-text("Done")');
@@ -304,9 +304,28 @@ async function sessionFlow(browser) {
   await page.context().close();
 }
 
+// TODO-04: plain HTTP on an internal name is NOT a secure context, so
+// crypto.subtle is missing and the PKCE challenge must use sha256.js.
+async function insecureContextFlow() {
+  step = 'insecure context';
+  const browser = await chromium.launch({ args: ['--host-resolver-rules=MAP mtco.test 127.0.0.1'] });
+  const page = await newPage(browser);
+  const base = 'http://mtco.test:9100';
+  await page.goto(`${base}/`);
+  await page.waitForSelector('#sign-in');
+  const ctx = await page.evaluate(() => ({ secure: window.isSecureContext, subtle: Boolean(globalThis.crypto.subtle) }));
+  assert.deepEqual(ctx, { secure: false, subtle: false });
+  await page.click('#sign-in');
+  await page.click('#login-dat');
+  await page.waitForSelector('.kpis');
+  assert.match(page.url(), /^http:\/\/mtco\.test:9100\//);
+  await page.context().close();
+  await browser.close();
+}
+
 (async () => {
   const browser = await chromium.launch();
-  const flows = { platformFlow, mobileFlow, tenantAdminFlow, viewerAndBlocked, sessionFlow };
+  const flows = { platformFlow, mobileFlow, tenantAdminFlow, viewerAndBlocked, sessionFlow, insecureContextFlow };
   let failed = false;
   for (const [name, fn] of Object.entries(flows)) {
     if (ONLY && ONLY !== name) continue;

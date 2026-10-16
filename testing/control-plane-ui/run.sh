@@ -9,7 +9,6 @@ WORK="$(mktemp -d)"
 PORT=9100
 
 cp "$SITE_SRC"/* "$WORK/"
-cp "$HERE/config.test.js" "$WORK/config.js"
 mkdir -p "$HERE/shots"
 
 node "$HERE/mock-server.js" "$WORK" "$PORT" > "$WORK/server.log" 2>&1 &

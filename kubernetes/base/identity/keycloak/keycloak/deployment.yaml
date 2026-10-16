@@ -74,6 +74,24 @@ spec:
                   name: keycloak-admin
                   key: password
 
+            # TODO-04: one fixed public name. Tokens carry
+            # iss = KC_HOSTNAME/realms/<realm> whichever address was used
+            # to call Keycloak; in-cluster callers keep using
+            # http://keycloak:8080 (backchannel dynamic).
+            - name: KC_HOSTNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: platform-endpoints
+                  key: KEYCLOAK_PUBLIC_URL
+
+            - name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC
+              value: "true"
+
+            # HTTP everywhere for now (mentor, 2026-10-15); TLS, if ever,
+            # is terminated by the entry point in front of the cluster.
+            - name: KC_HTTP_ENABLED
+              value: "true"
+
             - name: KC_HEALTH_ENABLED
               value: "true"
 

@@ -17,23 +17,70 @@ spec:
 
     spec:
       initContainers:
-        - name: fetch-keycloak-jwks
+        # TODO-04 (I-06): keeps /jwks/jwks.json in sync with Keycloak's
+        # signing keys over the IN-CLUSTER address (no DNS outside the
+        # cluster needed). A native sidecar: the collector starts once the
+        # first copy exists (startupProbe) and the oidc extension reloads
+        # the file by itself whenever it changes (fsnotify), so a Keycloak
+        # key rotation needs no restart. Only a changed, valid key set is
+        # swapped in (atomic rename); a failed fetch keeps the old keys.
+        - name: jwks-refresher
           image: busybox:1.37.0
+          restartPolicy: Always
+
+          env:
+            - name: JWKS_URL
+              value: http://keycloak:8080/realms/observability/protocol/openid-connect/certs
+
+            - name: REFRESH_SECONDS
+              value: "60"
 
           command:
             - /bin/sh
-            - -ec
+            - -c
             - |
-              echo "Fetching Keycloak JWKS..."
+              STAGING=/jwks/.staging
+              mkdir -p "$STAGING"
 
-              until wget -qO /jwks/jwks.json \
-                http://keycloak:8080/realms/observability/protocol/openid-connect/certs;
-              do
+              fetch() {
+                wget -qO "$STAGING/jwks.json" "$JWKS_URL" \
+                  && grep -q '"keys"' "$STAGING/jwks.json"
+              }
+
+              until fetch; do
                 echo "Keycloak JWKS not ready yet..."
                 sleep 2
               done
 
+              mv -f "$STAGING/jwks.json" /jwks/jwks.json
               echo "Keycloak JWKS ready."
+
+              while true; do
+                sleep "$REFRESH_SECONDS"
+
+                if ! fetch; then
+                  echo "JWKS refresh failed; keeping the current keys"
+                elif cmp -s "$STAGING/jwks.json" /jwks/jwks.json; then
+                  rm -f "$STAGING/jwks.json"
+                else
+                  mv -f "$STAGING/jwks.json" /jwks/jwks.json
+                  echo "Keycloak signing keys changed; JWKS updated"
+                fi
+              done
+
+          startupProbe:
+            exec:
+              command: ["test", "-s", "/jwks/jwks.json"]
+            periodSeconds: 2
+            failureThreshold: 300
+
+          resources:
+            requests:
+              cpu: 5m
+              memory: 8Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
 
           volumeMounts:
             - name: keycloak-jwks

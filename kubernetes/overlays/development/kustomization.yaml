@@ -60,9 +60,20 @@ secretGenerator:
       - platform-admin.env
 
 configMapGenerator:
+  # TODO-04: the ONLY place that knows this environment's public URLs.
+  # Clients outside the cluster (browsers, agents) reach them through the
+  # enterprise DNS + entry point (the mentor's ingress/LB; environment/lab
+  # simulates them). Inside the cluster everything uses Service names.
+  # HTTP for now (mentor, 2026-10-15); changing scheme or names = changing
+  # the issuer = fresh install.
   - name: platform-endpoints
-    envs:
-      - platform.env
+    literals:
+      - MTCO_ENVIRONMENT=development
+      - KEYCLOAK_PUBLIC_URL=http://keycloak.mtco.test
+      - KEYCLOAK_ISSUER=http://keycloak.mtco.test/realms/observability
+      - GRAFANA_PUBLIC_URL=http://grafana.mtco.test
+      - UI_PUBLIC_URL=http://mtco.test
+      - OTEL_GATEWAY_PUBLIC_URL=http://otel.mtco.test
 
 images:
   - name: query-gateway
@@ -74,8 +85,6 @@ images:
     newTag: v0.10.0
 
 patches:
-  - path: patches/keycloak.yaml
-
   - target:
       kind: StatefulSet
     patch: |-

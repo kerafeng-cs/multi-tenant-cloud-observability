@@ -19,6 +19,7 @@ configMapGenerator:
       - site/app.js
       - site/api.js
       - site/auth.js
+      - site/sha256.js
       - site/dom.js
       - site/router.js
       - site/session.js
@@ -35,12 +36,8 @@ configMapGenerator:
       - site/tab-enrollments.js
       - site/tab-support.js
 
-  # TODO-04 door: the only place the UI knows Keycloak/Grafana/public URLs.
-  # An overlay can swap it with `behavior: replace` (no image, no rebuild).
-  - name: control-plane-ui-config
-    files:
-      - config.js
-
+  # nginx.conf is a template: /config.js is rendered from ConfigMap
+  # platform-endpoints (TODO-04), so the UI hard-codes no URL.
   - name: control-plane-ui-nginx
     files:
-      - default.conf=nginx.conf
+      - default.conf.template=nginx.conf

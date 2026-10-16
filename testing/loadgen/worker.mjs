@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -90,6 +91,10 @@ async function main() {
   process.once('SIGINT', () => abort.abort());
   await generate(config, credentials, Number(process.env.WORKER_INDEX ?? 0), process.env.MODE ?? 'load', { signal: abort.signal });
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// The ConfigMap mounts /config/worker.mjs as a symlink (..data/...), and
+// Node reports import.meta.url as the RESOLVED path. Comparing against the
+// raw argv path skipped main() silently: pods exited 0 sending nothing, so
+// the probe gate passed without a single request (found 2026-10-16).
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   main().catch((error) => { console.error(error.message); process.exitCode = 1; });
 }

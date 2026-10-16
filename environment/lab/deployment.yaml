@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lab-edge
+  labels:
+    app: lab-edge
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: lab-edge
+
+  template:
+    metadata:
+      labels:
+        app: lab-edge
+
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+
+      containers:
+        - name: nginx
+          image: nginxinc/nginx-unprivileged:1.27-alpine
+
+          ports:
+            - name: http
+              containerPort: 8080
+
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
+
+          volumeMounts:
+            - name: conf
+              mountPath: /etc/nginx/conf.d
+              readOnly: true
+
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: conf
+          configMap:
+            name: lab-edge
+
+        - name: tmp
+          emptyDir: {}

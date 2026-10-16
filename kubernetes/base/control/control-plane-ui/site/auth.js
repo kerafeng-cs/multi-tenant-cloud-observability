@@ -2,6 +2,8 @@
 // Tokens live in sessionStorage (this tab only, gone when it closes);
 // Keycloak's own SSO cookie makes the next sign-in silent.
 
+import { sha256 } from './sha256.js';
+
 const cfg = window.MTCO_CONFIG;
 const oidc = `${cfg.keycloakUrl}/realms/${encodeURIComponent(cfg.realm)}/protocol/openid-connect`;
 
@@ -20,8 +22,11 @@ function randomString(size) {
   return base64url(crypto.getRandomValues(new Uint8Array(size)));
 }
 
+/** S256 code challenge. crypto.subtle exists only on secure contexts
+ * (HTTPS/localhost); on plain-HTTP internal names use sha256.js. */
 async function challengeOf(verifier) {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  const bytes = new TextEncoder().encode(verifier);
+  const digest = globalThis.crypto.subtle ? await crypto.subtle.digest('SHA-256', bytes) : sha256(bytes);
 
   return base64url(digest);
 }

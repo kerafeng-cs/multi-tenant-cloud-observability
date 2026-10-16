@@ -153,9 +153,16 @@ spec:
               value: "openid profile email"
 
 
-            # Keycloak OIDC endpoints
+            # Keycloak OIDC endpoints: the browser goes to the public
+            # issuer, Grafana itself talks to Keycloak inside the cluster.
+            - name: KEYCLOAK_ISSUER
+              valueFrom:
+                configMapKeyRef:
+                  name: platform-endpoints
+                  key: KEYCLOAK_ISSUER
+
             - name: GF_AUTH_GENERIC_OAUTH_AUTH_URL
-              value: http://localhost:8080/realms/observability/protocol/openid-connect/auth
+              value: $(KEYCLOAK_ISSUER)/protocol/openid-connect/auth
 
             - name: GF_AUTH_GENERIC_OAUTH_TOKEN_URL
               value: http://keycloak:8080/realms/observability/protocol/openid-connect/token
@@ -164,9 +171,12 @@ spec:
               value: http://keycloak:8080/realms/observability/protocol/openid-connect/userinfo
 
 
-            # Grafana public URL
+            # Grafana public URL (platform-endpoints)
             - name: GF_SERVER_ROOT_URL
-              value: http://localhost:3000
+              valueFrom:
+                configMapKeyRef:
+                  name: platform-endpoints
+                  key: GRAFANA_PUBLIC_URL
 
 
             # Keycloak role -> Grafana role

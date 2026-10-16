@@ -33,7 +33,9 @@ export function hostMetrics(run, id, now, started) {
       point(userTime, { cpu: '0', state: 'user' }), point(elapsed * 0.1, { cpu: '0', state: 'system' }),
     ]),
     sum('system.memory.usage', 'By', false, [point(memory * load, { state: 'used' }), point(memory * (1 - load), { state: 'free' })]),
-    gauge('system.cpu.load_average.1m', '1', [point(load * 2)]),
+    // Unit as hostmetrics sends it: '1' would be exported as ..._1m_ratio and
+    // miss the dashboard/queries that the real agents feed.
+    gauge('system.cpu.load_average.1m', '{thread}', [point(load * 2)]),
     sum('system.network.io', 'By', true, [
       point(elapsed * (10000 + id % 100 * 100), { device: 'eth0', direction: 'receive' }),
       point(elapsed * (5000 + id % 100 * 50), { device: 'eth0', direction: 'transmit' }),

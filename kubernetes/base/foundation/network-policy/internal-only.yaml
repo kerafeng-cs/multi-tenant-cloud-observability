@@ -1,0 +1,36 @@
+# TODO-27: workloads in OTHER namespaces of the cluster may reach MTCO, but
+# only through its entry points: Keycloak (tokens), otel-gateway
+# (telemetry), control-plane (+UI) and Grafana. Those pods are not selected
+# here, so they stay open.
+#
+# Everything below is internal: databases, storage and query-gateway accept
+# traffic only from pods of this namespace. (kubectl port-forward does not
+# go through NetworkPolicy, so debugging access is unchanged.)
+#
+# Enforced only if the cluster's CNI implements NetworkPolicy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: internal-only
+
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - control-plane-postgres
+          - keycloak-postgres
+          - grafana-postgres
+          - opensearch
+          - vminsert
+          - vmselect
+          - vmstorage
+          - query-gateway
+
+  policyTypes:
+    - Ingress
+
+  ingress:
+    - from:
+        - podSelector: {}

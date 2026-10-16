@@ -64,14 +64,18 @@ spec:
                   name: control-plane-keycloak
                   key: client_secret
 
-            # TODO-04 door: public URL of the web UI (optional; the script
-            # falls back to http://localhost:18090).
+            # TODO-04: public URLs browsers come back to (redirect URIs).
             - name: UI_PUBLIC_URL
               valueFrom:
                 configMapKeyRef:
                   name: platform-endpoints
                   key: UI_PUBLIC_URL
-                  optional: true
+
+            - name: GRAFANA_PUBLIC_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: platform-endpoints
+                  key: GRAFANA_PUBLIC_URL
 
           command:
             - /bin/sh
@@ -124,6 +128,31 @@ spec:
 
 
               # ========================================
+              # User profile: admin-managed custom attributes
+              # ========================================
+              # ORDER MATTERS: this must run BEFORE the Control Plane Admin
+              # client exists. As soon as control-plane can get an admin token
+              # it creates the initial platform admin; without ADMIN_EDIT
+              # Keycloak silently drops the mtco_user_id marker and the account
+              # is left unmanaged ("exists but is not managed by MTCO").
+
+              # control-plane marks the Keycloak accounts it manages with the
+              # attribute mtco_user_id (TODO-23 v0.7). Keycloak >= 24 drops
+              # attributes that the declarative user profile does not allow;
+              # ADMIN_EDIT lets the admin API read/write them while users can
+              # neither see nor edit them. kcadm update = GET, merge, PUT.
+              echo "Allowing admin-managed unmanaged user attributes..."
+
+              $KCADM update users/profile \
+                -r "$REALM" \
+                -s unmanagedAttributePolicy=ADMIN_EDIT
+
+              echo "User profile unmanagedAttributePolicy=ADMIN_EDIT."
+
+
+
+
+              # ========================================
               # Grafana OIDC client
               # ========================================
 
@@ -152,7 +181,7 @@ spec:
                   -s standardFlowEnabled=true \
                   -s directAccessGrantsEnabled=false \
                   -s serviceAccountsEnabled=false \
-                  -s 'redirectUris=["http://localhost:3000/login/generic_oauth","http://127.0.0.1:3000/login/generic_oauth"]'
+                  -s "redirectUris=[\"$GRAFANA_PUBLIC_URL/login/generic_oauth\"]"
 
                 GRAFANA_CLIENT_UUID=$(
                   $KCADM get clients \
@@ -176,7 +205,7 @@ spec:
                   -s standardFlowEnabled=true \
                   -s directAccessGrantsEnabled=false \
                   -s serviceAccountsEnabled=false \
-                  -s 'redirectUris=["http://localhost:3000/login/generic_oauth","http://127.0.0.1:3000/login/generic_oauth"]'
+                  -s "redirectUris=[\"$GRAFANA_PUBLIC_URL/login/generic_oauth\"]"
               fi
 
               echo "Grafana OIDC client ready."
@@ -943,34 +972,16 @@ spec:
 
 
               # ========================================
-              # User profile: admin-managed custom attributes
-              # ========================================
-
-              # control-plane marks the Keycloak accounts it manages with the
-              # attribute mtco_user_id (TODO-23 v0.7). Keycloak >= 24 drops
-              # attributes that the declarative user profile does not allow;
-              # ADMIN_EDIT lets the admin API read/write them while users can
-              # neither see nor edit them. kcadm update = GET, merge, PUT.
-              echo "Allowing admin-managed unmanaged user attributes..."
-
-              $KCADM update users/profile \
-                -r "$REALM" \
-                -s unmanagedAttributePolicy=ADMIN_EDIT
-
-              echo "User profile unmanagedAttributePolicy=ADMIN_EDIT."
-
-
-              # ========================================
               # Control-plane UI client (TODO-01)
               # ========================================
 
               # Browser login for the web UI: public client, Authorization
               # Code + PKCE S256 only (no password grant, no implicit flow).
-              # TODO-04 door: UI_PUBLIC_URL (optional key of ConfigMap
-              # platform-endpoints) is where the browser opens the UI; it sets
-              # the allowed redirect / post-logout URIs and web origin.
+              # UI_PUBLIC_URL (ConfigMap platform-endpoints) is where the
+              # browser opens the UI; it sets the allowed redirect /
+              # post-logout URIs and web origin.
               UI_CLIENT_ID=control-plane-ui
-              UI_URL=${UI_PUBLIC_URL:-http://localhost:18090}
+              UI_URL=${UI_PUBLIC_URL:?UI_PUBLIC_URL is required}
 
               echo "Ensuring control-plane UI client ($UI_URL)..."
 
