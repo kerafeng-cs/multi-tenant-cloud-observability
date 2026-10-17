@@ -238,5 +238,25 @@ describe('OpenSearchTenantService', () => {
 
       expect(req.body).toBe(body);
     });
+
+    it('narrowed to one tenant (TODO-19 scope) gets the tenant rules', () => {
+      const req = request('/otel-logs*/_search', {
+        query: { match_all: {} },
+      });
+
+      service.enforce(req, 'tenant-b', true);
+
+      expect(JSON.stringify(req.body)).toContain(
+        '"resource.tenant.id.keyword":"tenant-b"',
+      );
+
+      expect(() =>
+        service.enforce(
+          request('/otel-logs*/_search', { aggs: { all: { global: {} } } }),
+          'tenant-b',
+          true,
+        ),
+      ).toThrow();
+    });
   });
 });

@@ -14,7 +14,7 @@ import type { Request, Response } from 'express';
 import type { AuthUser } from '../auth/auth-user';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
-import { resolveQueryAccess } from './access';
+import { platformScope, resolveQueryAccess } from './access';
 import { HttpProxyService } from './http-proxy.service';
 import { resolveDownstreamPath } from './safe-path';
 
@@ -58,7 +58,8 @@ export class VictoriaMetricsController {
     let tenantSegment: string;
 
     if (access.platformAdmin) {
-      tenantSegment = 'multitenant';
+      // Org 1: every tenant. A tenant org's datasource narrows it (TODO-19).
+      tenantSegment = platformScope(req.headers)?.vmAccountId ?? 'multitenant';
     } else {
       const vmAccountIds = req.user.vmAccountIds
         .map((accountId) => accountId.trim())

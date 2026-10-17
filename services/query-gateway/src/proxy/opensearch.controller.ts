@@ -6,7 +6,7 @@ import type { Request, Response } from 'express';
 import type { AuthUser } from '../auth/auth-user';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
-import { resolveQueryAccess } from './access';
+import { platformScope, resolveQueryAccess } from './access';
 import { HttpProxyService } from './http-proxy.service';
 import { OpenSearchTenantService } from './opensearch-tenant.service';
 import { resolveDownstreamPath } from './safe-path';
@@ -41,7 +41,13 @@ export class OpenSearchController {
 
     const targetPath = resolveDownstreamPath(baseUrl, clientPath, '/');
 
-    this.tenant.enforce(req, access.tenantId, access.platformAdmin);
+    // Platform admin: every tenant in org 1, narrowed to the tenant of a
+    // tenant org's datasource (TODO-19). Tenant users: their token's tenant.
+    const tenantId = access.platformAdmin
+      ? (platformScope(req.headers)?.tenantKey ?? null)
+      : access.tenantId;
+
+    this.tenant.enforce(req, tenantId, access.platformAdmin);
 
     const username = this.config.getOrThrow<string>('OPENSEARCH_USERNAME');
     const password = this.config.getOrThrow<string>('OPENSEARCH_PASSWORD');

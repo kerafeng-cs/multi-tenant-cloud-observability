@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 
@@ -46,12 +46,18 @@ function setup() {
 
   const controller = new VictoriaMetricsController(proxy, config);
 
-  const call = (user: AuthUser, path: string, method = 'GET') =>
+  const call = (
+    user: AuthUser,
+    path: string,
+    method = 'GET',
+    headers: Record<string, string> = {},
+  ) =>
     controller.proxyRequest(
       {
         method,
         originalUrl: `/query/victoriametrics${path}`,
         user,
+        headers,
       } as unknown as AuthenticatedRequest,
       {} as Response,
     );
@@ -78,6 +84,43 @@ describe('VictoriaMetricsController', () => {
     expect(targetPath()).toBe(
       '/select/multitenant/prometheus/api/v1/query_range?query=up',
     );
+  });
+
+  describe('tenant scope of a tenant org datasource (TODO-19)', () => {
+    const scope = {
+      'x-mtco-scope-tenant': 'tenant-b',
+      'x-mtco-scope-account': '7',
+    };
+
+    it('narrows a platform admin to the scoped account', async () => {
+      const { call, targetPath } = setup();
+
+      await call(platformAdmin, '/api/v1/query?query=up', 'GET', scope);
+
+      expect(targetPath()).toBe('/select/7/prometheus/api/v1/query?query=up');
+    });
+
+    it('never widens a tenant user: the scope is ignored', async () => {
+      const { call, targetPath } = setup();
+
+      await call(viewer, '/api/v1/query?query=up', 'GET', scope);
+
+      expect(targetPath()).toBe('/select/2/prometheus/api/v1/query?query=up');
+    });
+
+    it.each([
+      [{ 'x-mtco-scope-tenant': 'tenant-b' }],
+      [{ 'x-mtco-scope-account': '7' }],
+      [{ 'x-mtco-scope-tenant': 'tenant-b', 'x-mtco-scope-account': '7/../1' }],
+      [{ 'x-mtco-scope-tenant': 'Tenant B', 'x-mtco-scope-account': '7' }],
+    ])('fails closed on a partial or malformed scope: %j', async (headers) => {
+      const { call, forward } = setup();
+
+      await expect(
+        call(platformAdmin, '/api/v1/query?query=up', 'GET', headers),
+      ).rejects.toThrow(BadRequestException);
+      expect(forward).not.toHaveBeenCalled();
+    });
   });
 
   it.each([
