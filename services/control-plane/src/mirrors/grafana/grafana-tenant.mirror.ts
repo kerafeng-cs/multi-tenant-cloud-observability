@@ -86,7 +86,7 @@ export class GrafanaTenantMirror implements MirrorHandler {
     // Org 1 datasources come from the Grafana provisioning ConfigMap
     // (provisioned datasources cannot be edited through the API).
     if (orgId !== DEFAULT_GRAFANA_ORG_ID) {
-      for (const datasource of this.datasources()) {
+      for (const datasource of this.datasources(tenant)) {
         await this.grafana.upsertDatasource(orgId, datasource);
       }
     }
@@ -188,9 +188,27 @@ export class GrafanaTenantMirror implements MirrorHandler {
     return this.grafana.ensureOrg(tenant.tenantKey);
   }
 
-  /** Must stay identical to kubernetes/base/query/grafana/datasources.yaml. */
-  private datasources(): GrafanaDatasourceDefinition[] {
+  /**
+   * Same as kubernetes/base/query/grafana/datasources.yaml (org 1), plus a
+   * fixed tenant scope (TODO-19, 2026-10-16): every request from THIS org
+   * carries the tenant key and VictoriaMetrics account, and query-gateway
+   * narrows a platform admin (who otherwise sees every tenant) to it.
+   * Tenant users are bound by their token; the gateway ignores the scope
+   * for them, so the headers can only ever narrow, never widen.
+   */
+  private datasources(tenant: TenantRecord): GrafanaDatasourceDefinition[] {
     const base = this.config.queryGatewayUrl;
+
+    const scope = {
+      jsonData: {
+        httpHeaderName1: 'X-MTCO-Scope-Tenant',
+        httpHeaderName2: 'X-MTCO-Scope-Account',
+      },
+      secureJsonData: {
+        httpHeaderValue1: tenant.tenantKey,
+        httpHeaderValue2: tenant.vmAccountId,
+      },
+    };
 
     return [
       {
@@ -204,14 +222,17 @@ export class GrafanaTenantMirror implements MirrorHandler {
           database: 'otel-logs*',
           timeField: '@timestamp',
           oauthPassThru: true,
+          ...scope.jsonData,
         },
+        secureJsonData: scope.secureJsonData,
       },
       {
         uid: 'victoriametrics',
         name: 'VictoriaMetrics',
         type: 'prometheus',
         url: `${base}/query/victoriametrics`,
-        jsonData: { oauthPassThru: true },
+        jsonData: { oauthPassThru: true, ...scope.jsonData },
+        secureJsonData: scope.secureJsonData,
         isDefault: true,
       },
     ];

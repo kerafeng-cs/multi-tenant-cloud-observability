@@ -4,6 +4,10 @@ metadata:
   name: grafana-datasources
 
 data:
+  # Org 1 (platform) only. control-plane creates the same two datasources
+  # in every tenant org, plus the headers X-MTCO-Scope-Tenant /
+  # X-MTCO-Scope-Account that narrow a platform admin to that tenant
+  # (TODO-19). Org 1 has no scope: platform admins see every tenant here.
   datasources.yaml: |
     apiVersion: 1
 

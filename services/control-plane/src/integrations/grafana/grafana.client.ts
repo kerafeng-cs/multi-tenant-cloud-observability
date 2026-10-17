@@ -17,6 +17,8 @@ export interface GrafanaDatasourceDefinition {
   type: string;
   url: string;
   jsonData: Record<string, unknown>;
+  /** Write-only in Grafana: sent on every upsert. */
+  secureJsonData?: Record<string, string>;
   isDefault?: boolean;
 }
 

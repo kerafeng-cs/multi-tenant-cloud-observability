@@ -96,6 +96,39 @@ describe('GrafanaTenantMirror (active)', () => {
     expect(tenants.setGrafanaOrgId).toHaveBeenCalledWith(IDS.alpha, 7);
   });
 
+  it('scopes both datasources of a tenant org to that tenant (TODO-19)', async () => {
+    const { mirror, grafana } = setup(tenant({ grafanaOrgId: null }));
+
+    await mirror.sync(IDS.alpha);
+
+    const datasources = (
+      grafana.upsertDatasource.mock.calls as [
+        number,
+        {
+          uid: string;
+          jsonData: Record<string, unknown>;
+          secureJsonData?: Record<string, string>;
+        },
+      ][]
+    ).map(([, ds]) => ds);
+
+    expect(datasources).toHaveLength(2);
+
+    for (const ds of datasources) {
+      expect(ds.jsonData).toEqual(
+        expect.objectContaining({
+          oauthPassThru: true,
+          httpHeaderName1: 'X-MTCO-Scope-Tenant',
+          httpHeaderName2: 'X-MTCO-Scope-Account',
+        }),
+      );
+      expect(ds.secureJsonData).toEqual({
+        httpHeaderValue1: 'alpha-tenant',
+        httpHeaderValue2: '2',
+      });
+    }
+  });
+
   it('re-syncs (Grafana only) the tenant users and open grant holders, once each', async () => {
     const { mirror, outbox } = setup(tenant());
 
