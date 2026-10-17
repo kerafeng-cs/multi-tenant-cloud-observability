@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: log-collector
+
+spec:
+  selector:
+    matchLabels:
+      app: log-collector
+
+  template:
+    metadata:
+      labels:
+        app: log-collector
+
+    spec:
+      # Starts once OpenSearch answers (any HTTP status): the install phase
+      # is not collected (user decision 2026-10-16).
+      initContainers:
+        - name: wait-for-opensearch
+          image: curlimages/curl:8.10.1
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              until [ "$(curl -sk -o /dev/null -w '%{http_code}' --max-time 5 https://opensearch:9200)" != "000" ]; do
+                echo "waiting for opensearch..."
+                sleep 5
+              done
+
+      containers:
+        - name: log-collector
+          image: otel/opentelemetry-collector-contrib:0.160.0
+
+          args:
+            - --config=/etc/otelcol-contrib/config.yaml
+
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+
+            - name: OPENSEARCH_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: opensearch-ingest
+                  key: username
+
+            - name: OPENSEARCH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: opensearch-ingest
+                  key: password
+
+          # Pod log files on the node are owned by root.
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["DAC_READ_SEARCH"]
+
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otelcol-contrib/config.yaml
+              subPath: collector.yaml
+              readOnly: true
+
+            - name: pod-logs
+              mountPath: /var/log/pods
+              readOnly: true
+
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+
+      volumes:
+        - name: config
+          configMap:
+            name: log-collector-config
+
+        - name: pod-logs
+          hostPath:
+            path: /var/log/pods
+            type: Directory

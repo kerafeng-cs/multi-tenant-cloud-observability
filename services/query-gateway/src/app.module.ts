@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
 import { AppController } from './app.controller';
+import { MetricsController } from './metrics/metrics.controller';
 import { AuthModule } from './auth/auth.module';
 import { TenantModule } from './tenant/tenant.module';
 import { ProxyModule } from './proxy/proxy.module';
@@ -16,6 +17,6 @@ import { ProxyModule } from './proxy/proxy.module';
     TenantModule,
     ProxyModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, MetricsController],
 })
 export class AppModule {}

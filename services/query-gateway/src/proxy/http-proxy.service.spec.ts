@@ -21,6 +21,8 @@ jest.mock('@nestjs/axios', () => ({ HttpService: class {} }));
 
 import type { HttpService } from '@nestjs/axios';
 
+import { gatewayMetrics } from '../metrics/gateway-metrics';
+
 import { HttpProxyService } from './http-proxy.service';
 
 const fakeHttpService = {
@@ -112,6 +114,19 @@ describe('HttpProxyService (streaming)', () => {
 
     expect(res.body).toEqual({ path: '/a/b?x=1', method: 'POST' });
     expect(JSON.parse(lastUpstreamBody)).toEqual({ hello: 'world' });
+  });
+
+  it('counts streamed bytes and upstream latency per backend (TODO-25)', async () => {
+    const res = await request(proxyUrl).get('/proxy/counted').expect(200);
+    const exposition = gatewayMetrics.registry.render();
+
+    expect(res.text.length).toBeGreaterThan(0);
+    expect(exposition).toMatch(
+      /^query_gateway_response_bytes_total\{backend="proxy"\} \d+$/m,
+    );
+    expect(exposition).toMatch(
+      /^query_gateway_upstream_duration_seconds_count\{backend="proxy",outcome="2xx"\} \d+$/m,
+    );
   });
 
   it('passes backend error statuses through', async () => {

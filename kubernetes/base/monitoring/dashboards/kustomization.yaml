@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Mounted by the grafana Deployment at /etc/grafana/provisioning/dashboards:
+# Grafana reads provider.yaml there and loads the *.json files of the same
+# folder into org 1 (platform), folder "Platform". Read-only in the UI:
+# change the JSON here instead.
+configMapGenerator:
+  - name: grafana-platform-dashboards
+    files:
+      - provider.yaml
+      - platform-health.json
+      - benchmark.json

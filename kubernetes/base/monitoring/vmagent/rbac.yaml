@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vmagent
+
+---
+# Pods of THIS namespace only (service discovery of the scrape targets).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vmagent
+
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vmagent
+
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: vmagent
+
+subjects:
+  - kind: ServiceAccount
+    name: vmagent
+
+---
+# Nodes are cluster-scoped: read-only access to list them and to read the
+# kubelet's cAdvisor endpoint through the API server (per-pod CPU/RAM).
+# Only container metrics of the observability namespace are kept.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mtco-vmagent
+
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+
+  - apiGroups: [""]
+    resources: ["nodes/proxy"]
+    verbs: ["get"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mtco-vmagent
+
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mtco-vmagent
+
+subjects:
+  - kind: ServiceAccount
+    name: vmagent
+    namespace: observability

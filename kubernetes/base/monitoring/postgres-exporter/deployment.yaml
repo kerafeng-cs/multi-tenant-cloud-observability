@@ -1,0 +1,156 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-exporter
+
+# One pod, one exporter container per database (no change to the database
+# StatefulSets, so adding monitoring never restarts a database). Connects
+# over the Service like any other client; NetworkPolicy allows it because
+# it runs in this namespace.
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: postgres-exporter
+
+  template:
+    metadata:
+      labels:
+        app: postgres-exporter
+
+    spec:
+      initContainers:
+        - name: wait-for-databases
+          image: postgres:17-alpine
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              for HOST in control-plane-postgres keycloak-postgres grafana-postgres; do
+                until pg_isready -q -h "$HOST" -p 5432; do
+                  echo "waiting for $HOST..."
+                  sleep 3
+                done
+              done
+
+      containers:
+        - name: controlplane
+          image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+
+          args:
+            - --web.listen-address=:9187
+
+          env:
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: control-plane-db
+                  key: database
+
+            - name: DATA_SOURCE_URI
+              value: control-plane-postgres:5432/$(DB_NAME)?sslmode=disable
+
+            - name: DATA_SOURCE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: control-plane-db
+                  key: username
+
+            - name: DATA_SOURCE_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: control-plane-db
+                  key: password
+
+          ports:
+            - name: pg-controlplane
+              containerPort: 9187
+
+          resources:
+            requests:
+              cpu: 10m
+              memory: 24Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+
+        - name: keycloak
+          image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+
+          args:
+            - --web.listen-address=:9188
+
+          env:
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-db
+                  key: database
+
+            - name: DATA_SOURCE_URI
+              value: keycloak-postgres:5432/$(DB_NAME)?sslmode=disable
+
+            - name: DATA_SOURCE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-db
+                  key: username
+
+            - name: DATA_SOURCE_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-db
+                  key: password
+
+          ports:
+            - name: pg-keycloak
+              containerPort: 9188
+
+          resources:
+            requests:
+              cpu: 10m
+              memory: 24Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+
+        - name: grafana
+          image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+
+          args:
+            - --web.listen-address=:9189
+
+          env:
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-db
+                  key: database
+
+            - name: DATA_SOURCE_URI
+              value: grafana-postgres:5432/$(DB_NAME)?sslmode=disable
+
+            - name: DATA_SOURCE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-db
+                  key: username
+
+            - name: DATA_SOURCE_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-db
+                  key: password
+
+          ports:
+            - name: pg-grafana
+              containerPort: 9189
+
+          resources:
+            requests:
+              cpu: 10m
+              memory: 24Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi

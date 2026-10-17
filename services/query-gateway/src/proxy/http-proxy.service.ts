@@ -4,9 +4,11 @@ import type { AxiosResponse } from 'axios';
 import type { Request, Response } from 'express';
 import { Agent as HttpAgent } from 'node:http';
 import { Agent as HttpsAgent } from 'node:https';
-import type { Readable } from 'node:stream';
+import { type Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { firstValueFrom } from 'rxjs';
+
+import { gatewayMetrics } from '../metrics/gateway-metrics';
 
 /**
  * Response headers copied from the storage backend to the client.
@@ -77,6 +79,12 @@ export class HttpProxyService {
 
     res.on('close', onClientClose);
 
+    // '/query/victoriametrics' -> 'victoriametrics'
+    const backend = prefix.split('/').pop() || 'unknown';
+    const started = process.hrtime.bigint();
+    const elapsed = (): number =>
+      Number(process.hrtime.bigint() - started) / 1e9;
+
     try {
       let upstream: AxiosResponse<Readable>;
 
@@ -102,11 +110,29 @@ export class HttpProxyService {
       } catch (error) {
         // Client disconnected before the backend answered: nothing to send.
         if (abort.signal.aborted) {
+          gatewayMetrics.upstreamDuration.observe(
+            { backend, outcome: 'client_closed' },
+            elapsed(),
+          );
           return;
         }
 
+        gatewayMetrics.upstreamErrors.inc({
+          backend,
+          reason: upstreamErrorReason(error),
+        });
+        gatewayMetrics.upstreamDuration.observe(
+          { backend, outcome: 'error' },
+          elapsed(),
+        );
+
         throw error;
       }
+
+      gatewayMetrics.upstreamDuration.observe(
+        { backend, outcome: `${Math.floor(upstream.status / 100)}xx` },
+        elapsed(),
+      );
 
       res.status(upstream.status);
 
@@ -119,7 +145,15 @@ export class HttpProxyService {
       }
 
       try {
-        await pipeline(upstream.data, res);
+        // Counts the streamed bytes without buffering them.
+        const counter = new Transform({
+          transform(chunk: Buffer, _encoding, callback) {
+            gatewayMetrics.responseBytes.inc({ backend }, chunk.length);
+            callback(null, chunk);
+          },
+        });
+
+        await pipeline(upstream.data, counter, res);
       } catch (error) {
         // Client went away mid-stream: expected, nothing to report.
         if (!abort.signal.aborted) {
@@ -146,4 +180,18 @@ export class HttpProxyService {
 
     return headers;
   }
+}
+
+function upstreamErrorReason(error: unknown): string {
+  const code = (error as { code?: unknown } | null)?.code;
+
+  if (code === 'ECONNABORTED' || code === 'ETIMEDOUT') {
+    return 'timeout';
+  }
+
+  if (code === 'ECONNREFUSED' || code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
+    return 'connect';
+  }
+
+  return 'other';
 }

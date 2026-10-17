@@ -42,3 +42,22 @@ Workloads in **other namespaces** may send telemetry directly:
 Tokens obtained there carry the same public issuer. NetworkPolicy
 `internal-only` keeps databases, storage and query-gateway reachable from
 the `observability` namespace only.
+
+## Self-monitoring (TODO-25)
+
+Installed with the platform (`kubernetes/base/monitoring`). It needs, from
+the cluster:
+
+- **Cluster-scoped read access** for the `vmagent` ServiceAccount
+  (ClusterRole `mtco-vmagent`): `list/watch nodes` and `get nodes/proxy`,
+  to read per-container CPU/memory/network from each kubelet (cAdvisor)
+  through the API server. Only containers of the `observability` namespace
+  are kept.
+- **A DaemonSet reading `/var/log/pods` on every node** (`log-collector`,
+  hostPath read-only, runs as root to read the root-owned log files). Only
+  logs of the `observability` namespace are collected. If the namespace
+  enforces the `restricted` Pod Security level, this pod is rejected.
+
+Everything is stored as the platform tenant (`admin-tenant`) and shown in
+Grafana org 1, folder "Platform", dashboard "Platform health". There is no
+alerting.

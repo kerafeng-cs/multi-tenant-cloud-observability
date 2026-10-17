@@ -13,6 +13,7 @@ resources:
   - ../../base/control/control-plane
   - ../../base/control/control-plane-ui
   - ../../base/control/control-plane-db
+  - ../../base/monitoring
 
 secretGenerator:
   - name: opensearch-bootstrap
@@ -78,7 +79,7 @@ configMapGenerator:
 images:
   - name: query-gateway
     newName: kerafeng/query-gateway
-    newTag: v0.1.13
+    newTag: v0.1.14
 
   - name: control-plane
     newName: kerafeng/control-plane

@@ -1,0 +1,79 @@
+# Logs of the platform's own pods (namespace observability only) ->
+# OpenSearch, as the platform tenant (tenant.id = admin-tenant), so only
+# platform admins can read them through query-gateway. Same index, same
+# document shape and same ingest account as otel-gateway.
+receivers:
+  filelog:
+    include:
+      - /var/log/pods/observability_*/*/*.log
+    exclude:
+      # Not our own output (no feedback loop).
+      - /var/log/pods/observability_log-collector-*/*/*.log
+    # New lines only: what happened before the collector started (the
+    # install) is not collected.
+    start_at: end
+    include_file_path: true
+    operators:
+      # CRI/containerd/docker formats; sets k8s.namespace.name,
+      # k8s.pod.name, k8s.pod.uid, k8s.container.name from the file path.
+      - type: container
+        id: container-parser
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 200
+    spike_limit_mib: 50
+
+  resource/platform:
+    attributes:
+      - key: tenant.id
+        value: admin-tenant
+        action: upsert
+
+      - key: mtco.source
+        value: platform
+        action: upsert
+
+      - key: host.name
+        value: ${env:NODE_NAME}
+        action: upsert
+
+      - key: service.name
+        from_attribute: k8s.container.name
+        action: upsert
+
+  batch:
+    timeout: 5s
+
+extensions:
+  basicauth/opensearch:
+    client_auth:
+      username: ${env:OPENSEARCH_USERNAME}
+      password: ${env:OPENSEARCH_PASSWORD}
+
+exporters:
+  opensearch:
+    http:
+      endpoint: https://opensearch:9200
+      auth:
+        authenticator: basicauth/opensearch
+      # Same as otel-gateway today; see TODO-12 (internal TLS / PKI).
+      tls:
+        insecure_skip_verify: true
+
+    logs_index: otel-logs
+
+service:
+  extensions:
+    - basicauth/opensearch
+
+  telemetry:
+    metrics:
+      level: none
+
+  pipelines:
+    logs:
+      receivers: [filelog]
+      processors: [memory_limiter, resource/platform, batch]
+      exporters: [opensearch]

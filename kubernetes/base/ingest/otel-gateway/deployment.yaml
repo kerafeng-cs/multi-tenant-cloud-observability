@@ -116,6 +116,10 @@ spec:
             - name: otlp-http
               containerPort: 4318
 
+            # TODO-25: the collector's own metrics (scraped by vmagent).
+            - name: telemetry
+              containerPort: 8888
+
           volumeMounts:
             - name: config
               mountPath: /etc/otelcol-contrib/config.yaml

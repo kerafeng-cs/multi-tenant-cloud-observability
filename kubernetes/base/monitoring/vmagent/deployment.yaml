@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vmagent
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: vmagent
+
+  template:
+    metadata:
+      labels:
+        app: vmagent
+
+    spec:
+      serviceAccountName: vmagent
+
+      # Self-monitoring starts once the metrics store accepts writes; the
+      # install phase itself is not recorded (user decision 2026-10-16).
+      initContainers:
+        - name: wait-for-vminsert
+          image: busybox:1.37.0
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              until wget -q -O /dev/null http://vminsert:8480/health; do
+                echo "waiting for vminsert..."
+                sleep 5
+              done
+
+      containers:
+        - name: vmagent
+          image: victoriametrics/vmagent:v1.150.0
+
+          args:
+            - -promscrape.config=/config/scrape.yaml
+            - -promscrape.config.strictParse
+            # Platform tenant: admin-tenant = VictoriaMetrics account 1
+            # (seeded by 001_init.sql). Not through otel-gateway.
+            - -remoteWrite.url=http://vminsert:8480/insert/1/prometheus/api/v1/write
+            # Tells platform series apart from admin-tenant's own agents.
+            - -remoteWrite.label=mtco_source=platform
+            - -remoteWrite.tmpDataPath=/vmagent-data
+
+          ports:
+            - name: http
+              containerPort: 8429
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+
+            - name: buffer
+              mountPath: /vmagent-data
+
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+
+      volumes:
+        - name: config
+          configMap:
+            name: vmagent-config
+
+        # Short write-ahead buffer while vminsert is unreachable.
+        - name: buffer
+          emptyDir:
+            sizeLimit: 512Mi

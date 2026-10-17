@@ -243,6 +243,11 @@ spec:
               mountPath: /etc/grafana/provisioning/datasources
               readOnly: true
 
+            # TODO-25: "Platform health" dashboard of org 1.
+            - name: dashboard-provisioning
+              mountPath: /etc/grafana/provisioning/dashboards
+              readOnly: true
+
           startupProbe:
             httpGet:
               path: /api/health
@@ -282,3 +287,6 @@ spec:
         - name: datasource-provisioning
           configMap:
             name: grafana-datasources
+        - name: dashboard-provisioning
+          configMap:
+            name: grafana-platform-dashboards
