@@ -25,7 +25,7 @@
           "text": "*",
           "value": "*"
         },
-        "description": "Lọc log theo tên pod; * = tất cả, ví dụ control-plane-*",
+        "description": "Filter logs by pod name; * = all, e.g. control-plane-*",
         "hide": 0
       }
     ]
@@ -40,11 +40,11 @@
       "url": "/d/mtco-benchmark"
     }
   ],
-  "description": "TODO-25: số liệu và log của chính nền tảng MTCO (chỉ platform admin). Nguồn: vmagent (mtco_source=platform) và log-collector.",
+  "description": "TODO-25: metrics and logs of the MTCO platform itself (platform admins only). Sources: vmagent (mtco_source=platform) and log-collector.",
   "panels": [
     {
       "type": "row",
-      "title": "Tình trạng chung",
+      "title": "Overview",
       "id": 1,
       "collapsed": false,
       "gridPos": {
@@ -57,7 +57,7 @@
     },
     {
       "type": "stat",
-      "title": "Thành phần đang được thu số liệu (up)",
+      "title": "Components being scraped (up)",
       "id": 2,
       "datasource": {
         "type": "prometheus",
@@ -99,11 +99,11 @@
         "graphMode": "none",
         "textMode": "auto"
       },
-      "description": "1 = vmagent lấy được /metrics; 0 = không lấy được."
+      "description": "1 = vmagent can scrape /metrics; 0 = it cannot."
     },
     {
       "type": "stat",
-      "title": "Số pod theo thành phần",
+      "title": "Pods per component",
       "id": 3,
       "datasource": {
         "type": "prometheus",
@@ -148,7 +148,7 @@
     },
     {
       "type": "row",
-      "title": "Đường ghi: otel-gateway",
+      "title": "Write path: otel-gateway",
       "id": 4,
       "collapsed": false,
       "gridPos": {
@@ -161,7 +161,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Metric points nhận / giây",
+      "title": "Metric points accepted / s",
       "id": 5,
       "datasource": {
         "type": "prometheus",
@@ -187,7 +187,7 @@
             "uid": "victoriametrics"
           },
           "expr": "sum(rate({__name__=~\"otelcol_receiver_accepted_metric_points(_total)?\",mtco_source=\"platform\"}[5m]))",
-          "legendFormat": "nhận",
+          "legendFormat": "accepted",
           "range": true
         },
         {
@@ -197,7 +197,7 @@
             "uid": "victoriametrics"
           },
           "expr": "sum(rate({__name__=~\"otelcol_receiver_refused_metric_points(_total)?\",mtco_source=\"platform\"}[5m]))",
-          "legendFormat": "từ chối",
+          "legendFormat": "refused",
           "range": true
         }
       ],
@@ -215,7 +215,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Log records nhận / giây",
+      "title": "Log records accepted / s",
       "id": 6,
       "datasource": {
         "type": "prometheus",
@@ -241,7 +241,7 @@
             "uid": "victoriametrics"
           },
           "expr": "sum(rate({__name__=~\"otelcol_receiver_accepted_log_records(_total)?\",mtco_source=\"platform\"}[5m]))",
-          "legendFormat": "nhận",
+          "legendFormat": "accepted",
           "range": true
         },
         {
@@ -251,7 +251,7 @@
             "uid": "victoriametrics"
           },
           "expr": "sum(rate({__name__=~\"otelcol_receiver_refused_log_records(_total)?\",mtco_source=\"platform\"}[5m]))",
-          "legendFormat": "từ chối",
+          "legendFormat": "refused",
           "range": true
         }
       ],
@@ -269,7 +269,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Exporter: gửi được / lỗi / giây",
+      "title": "Exporter: sent / failed per second",
       "id": 7,
       "datasource": {
         "type": "prometheus",
@@ -343,7 +343,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Hàng đợi exporter",
+      "title": "Exporter queues",
       "id": 8,
       "datasource": {
         "type": "prometheus",
@@ -387,7 +387,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Độ trễ HTTP otel-gateway (p95)",
+      "title": "otel-gateway HTTP latency (p95)",
       "id": 9,
       "datasource": {
         "type": "prometheus",
@@ -412,7 +412,7 @@
             "type": "prometheus",
             "uid": "victoriametrics"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{job=\"otel-gateway\",mtco_source=\"platform\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_bucket{job=\"otel-gateway\",mtco_source=\"platform\"}[5m])))",
           "legendFormat": "p95",
           "range": true
         }
@@ -431,7 +431,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Request HTTP otel-gateway / giây theo mã",
+      "title": "otel-gateway HTTP requests / s by status code",
       "id": 10,
       "datasource": {
         "type": "prometheus",
@@ -456,7 +456,7 @@
             "type": "prometheus",
             "uid": "victoriametrics"
           },
-          "expr": "sum by (http_response_status_code) (rate(http_server_request_duration_seconds_count{job=\"otel-gateway\",mtco_source=\"platform\"}[5m]))",
+          "expr": "sum by (http_response_status_code) (rate(http_server_request_duration_count{job=\"otel-gateway\",mtco_source=\"platform\"}[5m]))",
           "legendFormat": "{{http_response_status_code}}",
           "range": true
         }
@@ -475,7 +475,7 @@
     },
     {
       "type": "row",
-      "title": "Đường đọc: query-gateway",
+      "title": "Read path: query-gateway",
       "id": 11,
       "collapsed": false,
       "gridPos": {
@@ -488,7 +488,7 @@
     },
     {
       "type": "timeseries",
-      "title": "query-gateway: request / giây theo route",
+      "title": "query-gateway: requests / s by route",
       "id": 12,
       "datasource": {
         "type": "prometheus",
@@ -532,7 +532,7 @@
     },
     {
       "type": "timeseries",
-      "title": "query-gateway: độ trễ p50 / p95 / p99",
+      "title": "query-gateway: latency p50 / p95 / p99",
       "id": 13,
       "datasource": {
         "type": "prometheus",
@@ -596,7 +596,7 @@
     },
     {
       "type": "timeseries",
-      "title": "query-gateway: lỗi theo mã (4xx/5xx, 499 = client bỏ)",
+      "title": "query-gateway: errors by code (4xx/5xx, 499 = client gave up)",
       "id": 14,
       "datasource": {
         "type": "prometheus",
@@ -640,7 +640,7 @@
     },
     {
       "type": "timeseries",
-      "title": "query-gateway: chờ storage (p95) theo backend",
+      "title": "query-gateway: storage wait (p95) by backend",
       "id": 15,
       "datasource": {
         "type": "prometheus",
@@ -684,7 +684,7 @@
     },
     {
       "type": "timeseries",
-      "title": "query-gateway: byte vào / ra",
+      "title": "query-gateway: bytes in / out",
       "id": 16,
       "datasource": {
         "type": "prometheus",
@@ -710,7 +710,7 @@
             "uid": "victoriametrics"
           },
           "expr": "sum by (backend) (rate(query_gateway_request_bytes_total{mtco_source=\"platform\"}[5m]))",
-          "legendFormat": "vào {{backend}}",
+          "legendFormat": "to {{backend}}",
           "range": true
         },
         {
@@ -738,7 +738,7 @@
     },
     {
       "type": "timeseries",
-      "title": "query-gateway: request đang xử lý / event-loop lag",
+      "title": "query-gateway: in-flight requests / event-loop lag",
       "id": 17,
       "datasource": {
         "type": "prometheus",
@@ -805,7 +805,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Rows ghi / giây (vminsert)",
+      "title": "Rows written / s (vminsert)",
       "id": 19,
       "datasource": {
         "type": "prometheus",
@@ -849,7 +849,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Request đọc / giây (vmselect)",
+      "title": "Read requests / s (vmselect)",
       "id": 20,
       "datasource": {
         "type": "prometheus",
@@ -893,7 +893,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Dung lượng dữ liệu / đĩa trống (vmstorage)",
+      "title": "Data size / free disk (vmstorage)",
       "id": 21,
       "datasource": {
         "type": "prometheus",
@@ -919,7 +919,7 @@
             "uid": "victoriametrics"
           },
           "expr": "sum(vm_data_size_bytes{job=\"vmstorage\",mtco_source=\"platform\"})",
-          "legendFormat": "dữ liệu",
+          "legendFormat": "data",
           "range": true
         },
         {
@@ -929,7 +929,7 @@
             "uid": "victoriametrics"
           },
           "expr": "min(vm_free_disk_space_bytes{job=\"vmstorage\",mtco_source=\"platform\"})",
-          "legendFormat": "đĩa trống (pod ít nhất)",
+          "legendFormat": "free disk (lowest pod)",
           "range": true
         }
       ],
@@ -960,7 +960,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Request / giây theo URI",
+      "title": "Requests / s by URI",
       "id": 23,
       "datasource": {
         "type": "prometheus",
@@ -1004,7 +1004,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Độ trễ trung bình theo URI",
+      "title": "Average latency by URI",
       "id": 24,
       "datasource": {
         "type": "prometheus",
@@ -1061,7 +1061,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Request / giây theo mã",
+      "title": "Requests / s by status code",
       "id": 26,
       "datasource": {
         "type": "prometheus",
@@ -1105,7 +1105,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Độ trễ p95",
+      "title": "Latency p95",
       "id": 27,
       "datasource": {
         "type": "prometheus",
@@ -1149,7 +1149,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Outbox (đồng bộ Keycloak/Grafana)",
+      "title": "Outbox (Keycloak/Grafana sync)",
       "id": 28,
       "datasource": {
         "type": "prometheus",
@@ -1216,7 +1216,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Request / giây theo mã",
+      "title": "Requests / s by status code",
       "id": 30,
       "datasource": {
         "type": "prometheus",
@@ -1260,7 +1260,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Độ trễ p95",
+      "title": "Latency p95",
       "id": 31,
       "datasource": {
         "type": "prometheus",
@@ -1317,7 +1317,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Kết nối đang mở",
+      "title": "Open connections",
       "id": 33,
       "datasource": {
         "type": "prometheus",
@@ -1361,7 +1361,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Transaction commit / giây",
+      "title": "Transaction commits / s",
       "id": 34,
       "datasource": {
         "type": "prometheus",
@@ -1405,7 +1405,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Kích thước DB",
+      "title": "Database size",
       "id": 35,
       "datasource": {
         "type": "prometheus",
@@ -1449,7 +1449,7 @@
     },
     {
       "type": "row",
-      "title": "Tài nguyên từng pod (kubelet/cAdvisor)",
+      "title": "Per-pod resources (kubelet/cAdvisor)",
       "id": 36,
       "collapsed": false,
       "gridPos": {
@@ -1550,7 +1550,7 @@
     },
     {
       "type": "timeseries",
-      "title": "CPU bị bóp (throttled %)",
+      "title": "CPU throttled (%)",
       "id": 39,
       "datasource": {
         "type": "prometheus",
@@ -1594,7 +1594,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Mạng nhận / gửi",
+      "title": "Network in / out",
       "id": 40,
       "datasource": {
         "type": "prometheus",
@@ -1648,7 +1648,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Container khởi động lại (trong 1 giờ)",
+      "title": "Container restarts (last 1 h)",
       "id": 41,
       "datasource": {
         "type": "prometheus",
@@ -1692,7 +1692,7 @@
     },
     {
       "type": "row",
-      "title": "Log các pod nền tảng",
+      "title": "Platform pod logs",
       "id": 42,
       "collapsed": false,
       "gridPos": {

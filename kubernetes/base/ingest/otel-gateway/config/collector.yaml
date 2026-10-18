@@ -71,6 +71,20 @@ exporters:
 
     logs_index: otel-logs
 
+    # Benchmark 2026-10-17: without a queue the agent's request waited for
+    # the OpenSearch bulk (p99 ~2.4 s), so agents slowed down with storage.
+    # The queue answers the agent at once and absorbs slow or failed bulks
+    # (retried with backoff); 4 bulks in flight. In memory: a restart drops
+    # what is still queued (persistent queue = TODO-21).
+    sending_queue:
+      enabled: true
+      num_consumers: 4
+      queue_size: 1000
+
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 5m
+
 service:
   # TODO-25: own metrics (accepted/refused/sent/failed per receiver and
   # exporter, queue size, HTTP server latency) for vmagent. "detailed"

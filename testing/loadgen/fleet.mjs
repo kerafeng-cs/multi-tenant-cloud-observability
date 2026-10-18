@@ -82,7 +82,10 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
   const getApi = async (override) => {
     const apiUrl = endpoint(override ?? v['api-url'] ?? 'http://localhost:18081', v['allow-http']);
     const keycloak = endpoint(v['keycloak-url'] ?? 'http://localhost:8080', v['allow-http']);
-    bearer ??= await (dependencies.login ?? login)(`${keycloak}/realms/observability/protocol/openid-connect/token`, v.user);
+    // testing/bench runs many steps unattended: it signs in once and passes
+    // a fresh operator access token here. Interactive sign-in otherwise.
+    bearer ??= process.env.MTCO_LOADGEN_BEARER
+      || await (dependencies.login ?? login)(`${keycloak}/realms/observability/protocol/openid-connect/token`, v.user);
     return apiClient(apiUrl, bearer);
   };
   if (command === 'status') {
