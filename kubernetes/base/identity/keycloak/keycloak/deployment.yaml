@@ -4,7 +4,13 @@ metadata:
   name: keycloak
 
 spec:
-  replicas: 1
+  # TODO-30 HA: two nodes clustered by Infinispan. In production mode
+  # ("start") the cache is "ispn" and members find each other through the
+  # shared database (default stack jdbc-ping, table JGROUPS_PING), so no
+  # extra Service or RBAC is needed; members talk on 7800/57800 inside the
+  # namespace (allowed by NetworkPolicy internal-only). Sessions are
+  # replicated, so either pod can serve any login or token request.
+  replicas: 2
 
   selector:
     matchLabels:
@@ -16,6 +22,18 @@ spec:
         app: keycloak
 
     spec:
+      # One pod per node where possible: a node loss keeps one Keycloak.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: keycloak
+
+      # Time to leave the cluster cleanly (hand over cache entries).
+      terminationGracePeriodSeconds: 60
+
       # Start Keycloak only once its database answers: no CrashLoopBackOff
       # on a fresh install while the Postgres volume is being provisioned.
       initContainers:
@@ -98,12 +116,41 @@ spec:
             - name: KC_METRICS_ENABLED
               value: "true"
 
+            # Latency histograms for the Platform/Benchmark dashboards.
+            - name: KC_HTTP_METRICS_HISTOGRAMS_ENABLED
+              value: "true"
+
+            # Benchmark 2026-10-18: one pod served 333 tokens/s, then at
+            # 600/s queued requests grew until the pod was OOMKilled and
+            # every agent lost token renewal. Shed load instead: beyond
+            # this queue Keycloak answers 503 and clients retry.
+            - name: KC_HTTP_MAX_QUEUED_REQUESTS
+              value: "1000"
+
+            # Two pods share keycloak-postgres (max_connections 100):
+            # 2 x 40 leaves room for the exporter and admin sessions.
+            - name: KC_DB_POOL_MAX_SIZE
+              value: "40"
+
+            # Heap = 50% of the memory limit (default 70%): the rest is
+            # for metaspace, threads and network buffers, which is what
+            # ran out at 1 GiB.
+            - name: JAVA_OPTS_KC_HEAP
+              value: "-XX:MaxRAMPercentage=50 -XX:InitialRAMPercentage=25"
+
           ports:
             - name: http
               containerPort: 8080
 
             - name: management
               containerPort: 9000
+
+            # Infinispan cluster transport and failure detection.
+            - name: jgroups
+              containerPort: 7800
+
+            - name: jgroups-fd
+              containerPort: 57800
 
           startupProbe:
             httpGet:
@@ -118,10 +165,19 @@ spec:
               port: management
             periodSeconds: 10
 
+          # Restart a pod that hangs (e.g. stuck in GC), but slowly: the
+          # other pod keeps serving meanwhile.
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: management
+            periodSeconds: 15
+            failureThreshold: 6
+
           resources:
             requests:
               cpu: 250m
-              memory: 512Mi
+              memory: 1Gi
             limits:
               cpu: "1"
-              memory: 1Gi
+              memory: 2Gi

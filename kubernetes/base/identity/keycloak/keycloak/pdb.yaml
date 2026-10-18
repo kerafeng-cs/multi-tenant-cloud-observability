@@ -1,0 +1,12 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: keycloak
+
+# Node drains and rolling updates never take both Keycloak pods at once.
+spec:
+  minAvailable: 1
+
+  selector:
+    matchLabels:
+      app: keycloak

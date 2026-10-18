@@ -562,7 +562,7 @@ phase2() {
 phase3() {
   say "PHASE 3 — Keycloak tokens (client_credentials): ${TOKEN_RATES[*]} req/s, ${SHORT}s each"
   ensure_bench_realm
-  md ""; md "## Phase 3 — Keycloak issuing agent tokens (1 replica)"; md ""
+  md ""; md "## Phase 3 — Keycloak issuing agent tokens ($KC_REPLICAS replica(s))"; md ""
   md "33 tokens/s ≈ **2,000 agents** renewing a 60-second token (the project target)."; md ""
   md "| Tokens/s target | Achieved | Errors | p50 (ms) | p95 (ms) | p99 (ms) | CPU Keycloak (cores) | RAM Keycloak (MiB) | CPU Keycloak Postgres | Postgres connections | k6 dropped | Verdict |"
   md "|---|---|---|---|---|---|---|---|---|---|---|---|"
@@ -699,6 +699,7 @@ port_forward control-plane "$CP_PORT" 8080
 port_forward vmselect "$VM_PORT" 8481
 login
 resolve_kc_admin
+KC_REPLICAS=$(kubectl -n "$NS" get deploy keycloak -o jsonpath='{.spec.replicas}')
 ISSUER=$(curl -fsS "http://127.0.0.1:$KC_PORT/realms/observability/.well-known/openid-configuration" | jq -r .issuer)
 [ -n "$ISSUER" ] && [ "$ISSUER" != null ] || die "cannot read the Keycloak issuer"
 ok "issuer: $ISSUER"
@@ -714,7 +715,7 @@ MEM=$(kubectl get nodes -o jsonpath='{range .items[*]}{.status.capacity.memory}{
   echo "# MTCO — Benchmark results ($(date '+%Y-%m-%d %H:%M'))"
   echo ""
   echo "- Cluster: **$NODES nodes, $CPUS CPUs, $MEM GiB RAM** (context \`$(kubectl config current-context)\`)"
-  echo "- Versions: control-plane \`$(kubectl -n $NS get deploy control-plane -o jsonpath='{.spec.template.spec.containers[0].image}' | sed 's#.*:##')\`, query-gateway \`$(kubectl -n $NS get deploy query-gateway -o jsonpath='{.spec.template.spec.containers[0].image}' | sed 's#.*:##')\`, Keycloak 1 replica"
+  echo "- Versions: control-plane \`$(kubectl -n $NS get deploy control-plane -o jsonpath='{.spec.template.spec.containers[0].image}' | sed 's#.*:##')\`, query-gateway \`$(kubectl -n $NS get deploy query-gateway -o jsonpath='{.spec.template.spec.containers[0].image}' | sed 's#.*:##')\`, Keycloak $KC_REPLICAS replica(s)"
   echo "- Profile: $PROFILE, ${STEP}s per step (k6: ${SHORT}s), test tenant \`$TENANT\`"
   echo "- Stop rules: errors > 1%, p99 > 1 s (writes/tokens) or > 2 s (reads), CPU throttled > 25%, or < 95% of the target rate achieved"
 } > "$MD"
@@ -736,7 +737,7 @@ done
   echo ""; echo "## Summary for slides"; echo ""
   [ -n "$BEST_HOSTS" ]  && echo "- **Metrics writes:** stable at **$BEST_HOSTS hosts** ($(( BEST_HOSTS * 10 / 15 )) points/s), no data lost."
   [ -n "$BEST_LOGS" ]   && echo "- **Log writes:** **$BEST_LOGS logs/s**, agents answered within milliseconds thanks to the queue; OpenSearch keeps up."
-  [ -n "$BEST_TOKENS" ] && echo "- **Keycloak (1 replica):** **$BEST_TOKENS tokens/s** ≈ **$(( BEST_TOKENS * 60 )) agents**; the 2,000-agent target needs 33/s."
+  [ -n "$BEST_TOKENS" ] && echo "- **Keycloak ($KC_REPLICAS replica(s)):** **$BEST_TOKENS tokens/s** ≈ **$(( BEST_TOKENS * 60 )) agents**; the 2,000-agent target needs 33/s."
   [ -n "$BEST_READS" ]  && echo "- **Reads through query-gateway:** **$BEST_READS queries/s** while data is being written."
   echo "- Raw numbers: \`raw.csv\`; k6 summaries: \`*.json\`; dashboard: Grafana → Platform → Benchmark (same time range)."
 } >> "$MD"
