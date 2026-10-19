@@ -27,3 +27,6 @@ client/otel/agent.env
 CLAUDE.md
 WORK_NOTES.md
 REPORT_NOTES.md
+
+# personal notes (slides, research drafts)
+/notes/

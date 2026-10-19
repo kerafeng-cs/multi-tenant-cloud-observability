@@ -215,6 +215,11 @@ spec:
               # after it was rolled over, so old logs go by whole index
               # (cheap) instead of delete-by-query. The legacy index
               # "otel-logs" (no suffix) is not matched and stays readable.
+              # Benchmark 2026-10-19: one shard on one node wrote ~4,300-
+              # 4,900 logs/s while its CPU idled (waiting on disk), so each
+              # stream gets 3 primaries (one per OpenSearch node) and new
+              # logs become searchable within 5 s instead of 1 s (less
+              # refresh work). Settings apply to NEW backing indices only.
               # ------------------------------------------------------------
 
               echo "Creating index template otel-logs-* (data streams)..."
@@ -233,8 +238,9 @@ spec:
                   "priority": 200,
                   "template": {
                     "settings": {
-                      "index.number_of_shards": 1,
-                      "index.number_of_replicas": 1
+                      "index.number_of_shards": 3,
+                      "index.number_of_replicas": 1,
+                      "index.refresh_interval": "5s"
                     }
                   }
                 }' >/dev/null

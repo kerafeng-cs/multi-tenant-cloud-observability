@@ -4,7 +4,9 @@ metadata:
   name: otel-gateway
 
 spec:
-  replicas: 2
+  # TODO-21: 3 x 1 GiB instead of 2 x 512 MiB: more room for the log
+  # queue, and losing one pod keeps two thirds of the capacity.
+  replicas: 3
 
   selector:
     matchLabels:
@@ -94,6 +96,11 @@ spec:
             - --config=/etc/otelcol-contrib/config.yaml
 
           env:
+            # Go garbage collector target below the 1 GiB limit, so the
+            # heap is collected before memory_limiter has to refuse data.
+            - name: GOMEMLIMIT
+              value: 800MiB
+
             - name: OPENSEARCH_USERNAME
               valueFrom:
                 secretKeyRef:
@@ -133,10 +140,10 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 128Mi
+              memory: 256Mi
             limits:
               cpu: 500m
-              memory: 512Mi
+              memory: 1Gi
 
       volumes:
         - name: config

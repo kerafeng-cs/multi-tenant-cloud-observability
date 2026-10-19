@@ -7,10 +7,16 @@ receivers:
           authenticator: oidc/agent
 
 processors:
+  # TODO-21: limits follow the container memory limit (deployment.yaml)
+  # instead of fixed MiB, so resizing the pod needs no config change.
+  # Refusing starts at 80% - 20% = 60% of the limit (agents get a
+  # retryable 503), hard limit at 80%. Benchmark 2026-10-18: with a fixed
+  # 400 MiB on a 512 MiB pod, logs topped out at ~5,000/s on RAM while CPU
+  # was below half.
   memory_limiter:
     check_interval: 1s
-    limit_mib: 400
-    spike_limit_mib: 100
+    limit_percentage: 80
+    spike_limit_percentage: 20
 
   resource/tenant:
     attributes:
@@ -26,7 +32,16 @@ processors:
         from_context: auth.claims.vm_account_id
         action: upsert
 
+  # Batches stay large: each OpenSearch bulk costs a roughly fixed
+  # round trip + disk sync, so throughput ~ batch size. Benchmark
+  # 2026-10-19: 1,000-2,000 per bulk dropped OpenSearch to ~4,200 logs/s
+  # (queue 93% full), while ~8k batches kept up with 5,000/s on 10-18.
+  # RAM is protected by the byte-bounded queue below, not by small
+  # batches; the max only stops one batch from growing without limit.
   batch:
+    send_batch_size: 8192
+    send_batch_max_size: 10000
+    timeout: 1s
 
 extensions:
   basicauth/opensearch:
@@ -85,10 +100,17 @@ exporters:
     # The queue answers the agent at once and absorbs slow or failed bulks
     # (retried with backoff); 4 bulks in flight. In memory: a restart drops
     # what is still queued (persistent queue = TODO-21).
+    # TODO-21: the queue is bounded in BYTES (128 MiB per pod, ~13% of the
+    # 1 GiB limit), not in batches whose size varies; when it is full the
+    # agent gets a retryable error instead of the pod running out of RAM.
+    # 2 bulks in flight per pod (3 pods = 6): benchmark 2026-10-19 showed
+    # ~11 concurrent bulks only made each one wait longer in OpenSearch
+    # (0.5 s -> 4 s) without writing more (Little's law).
     sending_queue:
       enabled: true
-      num_consumers: 4
-      queue_size: 1000
+      num_consumers: 2
+      sizer: bytes
+      queue_size: 134217728
 
     retry_on_failure:
       enabled: true

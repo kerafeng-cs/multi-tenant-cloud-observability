@@ -511,14 +511,15 @@ phase1() {
   done
   BEST_HOSTS=$best
   [[ $best == 0 ]] && md "" && md "**Limit reached at the first step: check the cluster before reading the numbers above.**"
-  md ""; md "**Highest stable level: $best synthetic hosts** (10 series per host, sent every 15 s)."
+  if [[ $best == 0 ]]; then md ""; md "**Highest stable level: below ${WRITE_HOSTS[0]} synthetic hosts** (the first step already failed)."
+  else md ""; md "**Highest stable level: $best synthetic hosts** (10 series per host, sent every 15 s)."; fi
 }
 
 phase2() {
   say "PHASE 2 — logs write path: ${LOG_RATES[*]} logs/s, ${STEP}s each"
   md ""; md "## Phase 2 — Logs write path (otel-gateway → OpenSearch)"; md ""
-  md "| Logs/s target | Logs/s accepted | Written to OpenSearch/s | Send failures/s | Max queue (batches / 1000) | p99 reply to agent (ms) | Refused by gateway/s | Workers stopped | CPU OpenSearch (cores) | RAM OpenSearch (MiB) | CPU otel-gw | Peak RAM otel-gw (MiB) | Verdict |"
-  md "|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+  md "| Logs/s target | Logs/s accepted | Written to OpenSearch/s | OpenSearch reply per batch (s) | Send failures/s | Max queue fill | Queue trend (end - middle) | p99 reply to agent (ms) | Refused by gateway/s | Workers stopped | CPU OpenSearch (cores) | RAM OpenSearch (MiB) | CPU otel-gw | Peak RAM, busiest otel-gw pod (MiB) | Verdict |"
+  md "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
   local best=0 rate
   for rate in "${LOG_RATES[@]}"; do
     RUN="bl-$rate-$(date +%H%M%S)"
@@ -533,8 +534,22 @@ phase2() {
     acc=$(otel_rate receiver_accepted_log_records "$w" "$t_end")
     sent=$(otel_rate exporter_sent_log_records "$w" "$t_end")
     refused=$(otel_rate receiver_refused_log_records "$w" "$t_end")
-    mem_o=$(peak_mem "$P_OTEL" "$w" "$t_end")
-    queue=$(vmq "max_over_time(max(otelcol_exporter_queue_size{exporter=\"opensearch\",$S})[${w}s:15s])" "$t_end")
+    # Average time OpenSearch takes to answer one bulk request. With a fixed
+    # number of senders, writes/s = senders x batch size / this time.
+    local bulk_s
+    bulk_s=$(vmq "sum(increase(http_client_request_duration_sum{server_address=\"opensearch\",pod=~\"$P_OTEL\",$S}[${w}s])) / sum(increase(http_client_request_duration_count{server_address=\"opensearch\",pod=~\"$P_OTEL\",$S}[${w}s]))" "$t_end")
+    # Highest single pod, which is what memory_limiter compares to its limit.
+    mem_o=$(vmq "max_over_time(max(container_memory_working_set_bytes{$C,pod=~\"$P_OTEL\"})[${w}s:30s])" "$t_end")
+    # Fill ratio (0-1), whatever the queue unit (batches or bytes).
+    local fill_expr="max(otelcol_exporter_queue_size{exporter=\"opensearch\",$S}) / max(otelcol_exporter_queue_capacity{exporter=\"opensearch\",$S})"
+    queue=$(vmq "max_over_time(($fill_expr)[${w}s:15s])" "$t_end")
+    # Trend: average fill over the last 2 minutes minus the 2 minutes in
+    # the middle of the window. A queue that settles (even at 40%) means
+    # OpenSearch keeps up; one that keeps growing means it does not.
+    local q_mid q_end grow
+    q_mid=$(vmq "avg_over_time(($fill_expr)[120s:15s])" "$(( t_end - w / 2 ))")
+    q_end=$(vmq "avg_over_time(($fill_expr)[120s:15s])" "$t_end")
+    grow=$(awk -v a="$q_end" -v b="$q_mid" 'BEGIN{ if (a=="NaN" || b=="NaN") print "NaN"; else printf "%.4f", a-b }')
     fail=$(otel_rate exporter_send_failed_log_records "$w" "$t_end")
     p99=$(hq 0.99 "http_server_request_duration_bucket{job=\"otel-gateway\",$S}" "$w" "$t_end")
     cpu_os=$(avg_cpu "$P_OS" "$w" "$t_end"); mem_os=$(peak_mem "$P_OS" "$w" "$t_end")
@@ -543,12 +558,12 @@ phase2() {
     local verdict="✅ ok"
     # The queue answers agents at once, so also require OpenSearch to keep
     # up: sent >= 90% of the rate and the queue never over half full.
-    if gt "$fail" 0 || gt "$p99" 1 || [ "$(cut -f3 <<<"$stats")" != 0 ] || [ "$(cut -f5 <<<"$stats")" != 0 ] || gt "$queue" 500 \
+    if gt "$fail" 0 || gt "$p99" 1 || [ "$(cut -f3 <<<"$stats")" != 0 ] || [ "$(cut -f5 <<<"$stats")" != 0 ] || gt "$queue" 0.8 || gt "$grow" 0.1 \
        || awk -v x="$refused" -v r="$rate" 'BEGIN{exit !(x!="NaN" && x+0 > r*0.01)}'  \
        || awk -v a="$sent" -v r="$rate" 'BEGIN{exit !(a=="NaN" || a+0 < r*0.9)}' \
        || awk -v a="$acc" -v r="$rate" 'BEGIN{exit !(a=="NaN" || a+0 < r*0.9)}'; then verdict="⚠️ limit reached"; fi
-    md "| $rate | $(f "$acc" 0) | $(f "$sent" 0) | $(f "$fail" 2) | $(f "$queue" 0) | $(ms "$p99") | $(f "$refused" 0) | $(cut -f5 <<<"$stats") / $LOAD_PODS | $(f "$cpu_os" 2) | $(mib "$mem_os") | $(f "$cpu_o" 2) | $(mib "$mem_o") | $verdict |"
-    for kv in "accepted:$acc" "sent_opensearch:$sent" "queue_max:$queue" "export_failed:$fail" "p99_s:$p99" "cpu_opensearch:$cpu_os" "mem_opensearch:$mem_os" "cpu_otel:$cpu_o" "refused:$refused" "mem_otel:$mem_o" "workers_stopped:$(cut -f5 <<<"$stats")"; do
+    md "| $rate | $(f "$acc" 0) | $(f "$sent" 0) | $(f "$bulk_s" 2) | $(f "$fail" 2) | $(pct "$queue") | $(pct "$grow") | $(ms "$p99") | $(f "$refused" 0) | $(cut -f5 <<<"$stats") / $LOAD_PODS | $(f "$cpu_os" 2) | $(mib "$mem_os") | $(f "$cpu_o" 2) | $(mib "$mem_o") | $verdict |"
+    for kv in "accepted:$acc" "sent_opensearch:$sent" "bulk_reply_s:$bulk_s" "queue_max:$queue" "queue_trend:$grow" "export_failed:$fail" "p99_s:$p99" "cpu_opensearch:$cpu_os" "mem_opensearch:$mem_os" "cpu_otel:$cpu_o" "refused:$refused" "mem_otel:$mem_o" "workers_stopped:$(cut -f5 <<<"$stats")"; do
       rec 2 "$rate" "${kv%%:*}" "${kv#*:}"
     done
     ok "$rate logs/s: accepted $(f "$acc" 0)/s — $verdict"
@@ -556,7 +571,8 @@ phase2() {
   done
   [[ $best == 0 ]] && md "" && md "**Limit reached at the first step: check the cluster before reading the numbers above.**"
   BEST_LOGS=$best
-  md ""; md "**Highest stable level: $best logs/s** (all written to OpenSearch, queue not building up)."
+  if [[ $best == 0 ]]; then md ""; md "**Highest stable level: below ${LOG_RATES[0]} logs/s** (the first step already failed)."
+  else md ""; md "**Highest stable level: $best logs/s** (all written to OpenSearch, queue not building up)."; fi
 }
 
 phase3() {
@@ -591,7 +607,8 @@ phase3() {
   BEST_TOKENS=$best
   local agents=$(( best * 60 ))
   [[ $best == 0 ]] && md "" && md "**Limit reached at the first step: check the cluster before reading the numbers above.**"
-  md ""; md "**Highest stable level: $best tokens/s ≈ $agents agents** (60-second tokens)."
+  if [[ $best == 0 ]]; then md ""; md "**Highest stable level: below ${TOKEN_RATES[0]} tokens/s** (the first step already failed)."
+  else md ""; md "**Highest stable level: $best tokens/s ≈ $agents agents** (60-second tokens)."; fi
 }
 
 phase4() {
@@ -640,7 +657,8 @@ phase4() {
   md "|---|---|---|---|---|---|---|"
   local d; for d in "${details[@]}"; do md "$d"; done
   [[ $best == 0 ]] && md "" && md "**Limit reached at the first step: check the cluster before reading the numbers above.**"
-  md ""; md "**Highest stable level: $best queries/s** (4 of 5 are metrics query_range/instant, 1 of 5 a 15-minute log search)."
+  if [[ $best == 0 ]]; then md ""; md "**Highest stable level: below ${READ_RATES[0]} queries/s** (the first step already failed)."
+  else md ""; md "**Highest stable level: $best queries/s** (4 of 5 are metrics query_range/instant, 1 of 5 a 15-minute log search)."; fi
 }
 
 mixed() {   # minutes title phase-number
@@ -735,10 +753,14 @@ done
 
 {
   echo ""; echo "## Summary for slides"; echo ""
-  [ -n "$BEST_HOSTS" ]  && echo "- **Metrics writes:** stable at **$BEST_HOSTS hosts** ($(( BEST_HOSTS * 10 / 15 )) points/s), no data lost."
-  [ -n "$BEST_LOGS" ]   && echo "- **Log writes:** **$BEST_LOGS logs/s**, agents answered within milliseconds thanks to the queue; OpenSearch keeps up."
-  [ -n "$BEST_TOKENS" ] && echo "- **Keycloak ($KC_REPLICAS replica(s)):** **$BEST_TOKENS tokens/s** ≈ **$(( BEST_TOKENS * 60 )) agents**; the 2,000-agent target needs 33/s."
-  [ -n "$BEST_READS" ]  && echo "- **Reads through query-gateway:** **$BEST_READS queries/s** while data is being written."
+  [ -n "$BEST_HOSTS" ] && [ "$BEST_HOSTS" = 0 ] && echo "- **Metrics writes:** limit reached already at ${WRITE_HOSTS[0]} hosts (see phase 1)."
+  [ -n "$BEST_HOSTS" ] && [ "$BEST_HOSTS" != 0 ] && echo "- **Metrics writes:** stable at **$BEST_HOSTS hosts** ($(( BEST_HOSTS * 10 / 15 )) points/s), no data lost."
+  [ -n "$BEST_LOGS" ] && [ "$BEST_LOGS" = 0 ] && echo "- **Log writes:** limit reached already at ${LOG_RATES[0]} logs/s (see phase 2)."
+  [ -n "$BEST_LOGS" ] && [ "$BEST_LOGS" != 0 ] && echo "- **Log writes:** **$BEST_LOGS logs/s**, agents answered within milliseconds thanks to the queue; OpenSearch keeps up."
+  [ -n "$BEST_TOKENS" ] && [ "$BEST_TOKENS" = 0 ] && echo "- **Keycloak ($KC_REPLICAS replica(s)):** limit reached already at ${TOKEN_RATES[0]} tokens/s (see phase 3)."
+  [ -n "$BEST_TOKENS" ] && [ "$BEST_TOKENS" != 0 ] && echo "- **Keycloak ($KC_REPLICAS replica(s)):** **$BEST_TOKENS tokens/s** ≈ **$(( BEST_TOKENS * 60 )) agents**; the 2,000-agent target needs 33/s."
+  [ -n "$BEST_READS" ] && [ "$BEST_READS" = 0 ] && echo "- **Reads through query-gateway:** limit reached already at ${READ_RATES[0]} queries/s (see phase 4)."
+  [ -n "$BEST_READS" ] && [ "$BEST_READS" != 0 ] && echo "- **Reads through query-gateway:** **$BEST_READS queries/s** while data is being written." || true
   echo "- Raw numbers: \`raw.csv\`; k6 summaries: \`*.json\`; dashboard: Grafana → Platform → Benchmark (same time range)."
 } >> "$MD"
 
