@@ -62,7 +62,9 @@ exporters:
       tls:
         insecure_skip_verify: true
 
-    logs_index: otel-logs
+    # Platform logs belong to the platform tenant: its own data stream.
+    logs_index: otel-logs-admin-tenant
+    bulk_action: create
 
 service:
   extensions:

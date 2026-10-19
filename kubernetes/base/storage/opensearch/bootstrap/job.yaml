@@ -117,10 +117,12 @@ spec:
                   "index_permissions": [
                     {
                       "index_patterns": [
-                        "otel-logs*"
+                        "otel-logs*",
+                        ".ds-otel-logs*"
                       ],
                       "allowed_actions": [
                         "create_index",
+                        "indices:admin/data_stream/create",
                         "write"
                       ]
                     }
@@ -171,7 +173,8 @@ spec:
                   "index_permissions": [
                     {
                       "index_patterns": [
-                        "otel-logs*"
+                        "otel-logs*",
+                        ".ds-otel-logs*"
                       ],
                       "allowed_actions": [
                         "read"
@@ -202,6 +205,165 @@ spec:
                     \"query-gateway-role\"
                   ]
                 }"
+
+              # ------------------------------------------------------------
+              # Log lifecycle (TODO-21/15): one data stream per tenant,
+              # otel-logs-<tenant>, created on first write by otel-gateway.
+              # A data stream is written under one name while OpenSearch
+              # keeps it as a chain of backing indices; ISM rolls a new
+              # backing index at 10 GB or 14 days and deletes one 30 days
+              # after it was rolled over, so old logs go by whole index
+              # (cheap) instead of delete-by-query. The legacy index
+              # "otel-logs" (no suffix) is not matched and stays readable.
+              # ------------------------------------------------------------
+
+              echo "Creating index template otel-logs-* (data streams)..."
+
+              curl -fsS \
+                --cacert "$CA" \
+                --connect-timeout 3 \
+                --max-time 10 \
+                -u "admin:${ADMIN_PASSWORD}" \
+                -H 'Content-Type: application/json' \
+                -X PUT \
+                "${OPENSEARCH_URL}/_index_template/otel-logs" \
+                -d '{
+                  "index_patterns": ["otel-logs-*"],
+                  "data_stream": {},
+                  "priority": 200,
+                  "template": {
+                    "settings": {
+                      "index.number_of_shards": 1,
+                      "index.number_of_replicas": 1
+                    }
+                  }
+                }' >/dev/null
+
+              # ISM policies are versioned: create once, never overwrite
+              # an existing (possibly tuned) policy.
+              POLICY_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' \
+                --cacert "$CA" \
+                --connect-timeout 3 \
+                --max-time 10 \
+                -u "admin:${ADMIN_PASSWORD}" \
+                "${OPENSEARCH_URL}/_plugins/_ism/policies/otel-logs-lifecycle")
+
+              if [ "$POLICY_STATUS" = 404 ]; then
+                echo "Creating ISM policy otel-logs-lifecycle..."
+
+                curl -fsS \
+                  --cacert "$CA" \
+                  --connect-timeout 3 \
+                  --max-time 10 \
+                  -u "admin:${ADMIN_PASSWORD}" \
+                  -H 'Content-Type: application/json' \
+                  -X PUT \
+                  "${OPENSEARCH_URL}/_plugins/_ism/policies/otel-logs-lifecycle" \
+                  -d '{
+                    "policy": {
+                      "description": "MTCO logs: roll over at 10 GB or 14 days, delete 30 days after rollover",
+                      "default_state": "hot",
+                      "states": [
+                        {
+                          "name": "hot",
+                          "actions": [
+                            { "rollover": { "min_size": "10gb", "min_index_age": "14d" } }
+                          ],
+                          "transitions": [
+                            { "state_name": "delete", "conditions": { "min_rollover_age": "30d" } }
+                          ]
+                        },
+                        {
+                          "name": "delete",
+                          "actions": [ { "delete": {} } ],
+                          "transitions": []
+                        }
+                      ],
+                      "ism_template": [
+                        { "index_patterns": ["otel-logs-*", ".ds-otel-logs-*"], "priority": 100 }
+                      ]
+                    }
+                  }' >/dev/null
+              else
+                echo "ISM policy otel-logs-lifecycle exists (HTTP ${POLICY_STATUS}); kept as is."
+              fi
+
+              # ------------------------------------------------------------
+              # Self-test with the real service accounts: the ingest user
+              # writes into a data stream exactly like otel-gateway (bulk
+              # "create"), the query user finds it through otel-logs*, then
+              # the admin removes the test stream.
+              # ------------------------------------------------------------
+
+              echo "Self-test: ingest account writes to a data stream..."
+
+              NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+              BULK=$(printf '%s\n%s\n' \
+                '{"create":{"_index":"otel-logs-bootstrap-check"}}' \
+                "{\"@timestamp\":\"${NOW}\",\"body\":\"mtco bootstrap check\"}")
+
+              # The bulk body must end with a newline ($(...) strips it).
+              WRITE=$(printf '%s\n' "$BULK" | curl -fsS \
+                --cacert "$CA" \
+                --connect-timeout 3 \
+                --max-time 10 \
+                -u "${INGEST_USERNAME}:${INGEST_PASSWORD}" \
+                -H 'Content-Type: application/x-ndjson' \
+                -X POST \
+                "${OPENSEARCH_URL}/_bulk" \
+                --data-binary @-)
+
+              case "$WRITE" in
+                *'"errors":false'*) echo "  write OK" ;;
+                *) echo "  write FAILED: $WRITE"; exit 1 ;;
+              esac
+
+              echo "Self-test: query account reads it back..."
+
+              FOUND=0
+              for i in 1 2 3 4 5 6 7 8 9 10; do
+                sleep 2
+                READ=$(curl -fsS \
+                  --cacert "$CA" \
+                  --connect-timeout 3 \
+                  --max-time 10 \
+                  -u "${QUERY_USERNAME}:${QUERY_PASSWORD}" \
+                  "${OPENSEARCH_URL}/otel-logs*/_search?q=body:bootstrap&size=0")
+                case "$READ" in
+                  *'"total":{"value":0'*) ;;
+                  *'"total":{"value":'*) FOUND=1; break ;;
+                esac
+              done
+
+              if [ "$FOUND" != 1 ]; then
+                echo "  read FAILED: $READ"
+                exit 1
+              fi
+              echo "  read OK"
+
+              echo "Self-test: lifecycle policy attached..."
+
+              EXPLAIN=$(curl -fsS \
+                --cacert "$CA" \
+                --connect-timeout 3 \
+                --max-time 10 \
+                -u "admin:${ADMIN_PASSWORD}" \
+                "${OPENSEARCH_URL}/_plugins/_ism/explain/.ds-otel-logs-bootstrap-check-*" || true)
+
+              case "$EXPLAIN" in
+                *otel-logs-lifecycle*) echo "  policy OK" ;;
+                *) echo "  WARNING: policy not attached yet: $EXPLAIN" ;;
+              esac
+
+              curl -fsS \
+                --cacert "$CA" \
+                --connect-timeout 3 \
+                --max-time 10 \
+                -u "admin:${ADMIN_PASSWORD}" \
+                -X DELETE \
+                "${OPENSEARCH_URL}/_data_stream/otel-logs-bootstrap-check" >/dev/null
+
+              echo "  test data stream removed"
 
               # ------------------------------------------------------------
               # Verification

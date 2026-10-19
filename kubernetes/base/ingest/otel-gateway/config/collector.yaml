@@ -69,7 +69,16 @@ exporters:
       tls:
         insecure_skip_verify: true
 
-    logs_index: otel-logs
+    # One data stream per tenant (template otel-logs-* + ISM policy from
+    # the OpenSearch bootstrap Job). tenant.id is the resource attribute
+    # set from the token by processor resource/tenant, never by the agent.
+    # Data streams only accept "create". Readers keep using otel-logs*,
+    # which also covers the legacy otel-logs index.
+    logs_index: "otel-logs-%{tenant.id}"
+    # Never used in practice (tenant.id is always set); the underscore
+    # cannot appear in a tenant key, so this can never be a tenant's stream.
+    logs_index_fallback: no_tenant
+    bulk_action: create
 
     # Benchmark 2026-10-17: without a queue the agent's request waited for
     # the OpenSearch bulk (p99 ~2.4 s), so agents slowed down with storage.
