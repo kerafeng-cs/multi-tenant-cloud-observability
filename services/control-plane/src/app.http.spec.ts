@@ -101,8 +101,12 @@ const mocks = {
   tenants: {
     list: jest.fn().mockResolvedValue([toTenantView(alpha)]),
     get: jest.fn((_actor: unknown, t: typeof alpha) => toTenantView(t)),
-    create: jest.fn((_actor: unknown, tenantKey: string) =>
-      Promise.resolve(toTenantView(tenant({ tenantKey, grafanaOrgId: null }))),
+    create: jest.fn((_actor: unknown, input: { tenantKey: string }) =>
+      Promise.resolve(
+        toTenantView(
+          tenant({ tenantKey: input.tenantKey, grafanaOrgId: null }),
+        ),
+      ),
     ),
     delete: jest.fn().mockResolvedValue(undefined),
   },
@@ -347,8 +351,36 @@ describe('tenants', () => {
     });
     expect(mocks.tenants.create).toHaveBeenCalledWith(
       expect.objectContaining({ username: 'root-admin' }),
-      'gamma-tenant',
+      { tenantKey: 'gamma-tenant', metricsStore: undefined, logsStore: undefined },
     );
+  });
+
+  it('POST with data stores (TODO-28) passes them on; a malformed name → 400', async () => {
+    await call('post', api('/tenants'), 'root', {
+      tenantKey: 'gamma-tenant',
+      metricsStore: 'dedicated-1',
+      logsStore: 'shared',
+    }).expect(201);
+
+    expect(mocks.tenants.create).toHaveBeenLastCalledWith(
+      expect.anything(),
+      { tenantKey: 'gamma-tenant', metricsStore: 'dedicated-1', logsStore: 'shared' },
+    );
+
+    const calls = mocks.tenants.create.mock.calls.length;
+
+    const res = await call('post', api('/tenants'), 'root', {
+      tenantKey: 'delta-tenant',
+      metricsStore: 'Dedicated_1',
+    }).expect(400);
+
+    expect(res.body).toMatchObject({
+      error: {
+        code: 'validation_failed',
+        details: [expect.objectContaining({ field: 'metricsStore' })] as unknown,
+      },
+    });
+    expect(mocks.tenants.create.mock.calls.length).toBe(calls);
   });
 
   it('the v0.7 body {tenantId} is rejected (400 validation_failed)', async () => {
@@ -699,7 +731,11 @@ describe('OpenAPI document', () => {
     );
     expect(fields('TenantList')).toEqual(['items']);
     expect(fields('ErrorResponse')).toEqual(['error', 'requestId']);
-    expect(fields('CreateTenantDto')).toEqual(['tenantKey']);
+    expect(fields('CreateTenantDto')).toEqual([
+      'logsStore',
+      'metricsStore',
+      'tenantKey',
+    ]);
     expect(fields('ExchangeDto')).toEqual(['token']);
     expect(fields('UpdateUserDto')).toEqual(['enabled']);
     expect(schemas.CreateUserDto.properties?.password).toMatchObject({

@@ -14,6 +14,9 @@ export interface AgentRecord {
   tenantId: string;
   tenantKey: string;
   vmAccountId: string;
+  /** TODO-28: the tenant's stores (claims of the agent's tokens). */
+  metricsStore: string;
+  logsStore: string;
   clientId: string;
   clientUuid: string | null;
   status: AgentStatus;
@@ -26,6 +29,8 @@ interface AgentRow {
   tenant_id: string;
   tenant_key: string;
   vm_account_id: string;
+  metrics_store: string;
+  logs_store: string;
   keycloak_client_id: string;
   keycloak_client_uuid: string | null;
   status: AgentStatus;
@@ -34,7 +39,8 @@ interface AgentRow {
 }
 
 const SELECT = `
-  SELECT a.id, a.tenant_id, t.tenant_key, t.vm_account_id, a.keycloak_client_id,
+  SELECT a.id, a.tenant_id, t.tenant_key, t.vm_account_id,
+         t.metrics_store, t.logs_store, a.keycloak_client_id,
          a.keycloak_client_uuid, a.status, a.created_at, a.revoked_at
   FROM agents a
   JOIN tenants t ON t.id = a.tenant_id
@@ -156,6 +162,8 @@ export class AgentRepository extends BaseRepository<AgentRow, AgentRecord> {
       tenantId: row.tenant_id,
       tenantKey: row.tenant_key,
       vmAccountId: String(row.vm_account_id),
+      metricsStore: row.metrics_store,
+      logsStore: row.logs_store,
       clientId: row.keycloak_client_id,
       clientUuid: row.keycloak_client_uuid,
       status: row.status,

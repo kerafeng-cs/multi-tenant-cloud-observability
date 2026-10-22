@@ -40,7 +40,10 @@ export class TenantsController {
     return { items: await this.tenants.list(actor) };
   }
 
-  /** Creates the tenant, its Keycloak group (now) and Grafana org (async). */
+  /**
+   * Creates the tenant, its Keycloak group (now) and Grafana org (async).
+   * Optional data stores (TODO-28), fixed for the tenant's lifetime.
+   */
   @Post()
   @Roles('platform-admin')
   @ApiCreatedResponse({ type: TenantView })
@@ -48,7 +51,11 @@ export class TenantsController {
     @CurrentActor() actor: Actor,
     @Body() body: CreateTenantDto,
   ): Promise<TenantView> {
-    return this.tenants.create(actor, body.tenantKey);
+    return this.tenants.create(actor, {
+      tenantKey: body.tenantKey,
+      metricsStore: body.metricsStore,
+      logsStore: body.logsStore,
+    });
   }
 
   /** Tenant admins may read their own tenant. */

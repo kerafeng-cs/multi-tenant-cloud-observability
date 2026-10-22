@@ -9,6 +9,20 @@ import { button, card, dataTable, emptyState, formDialog, loadInto, pageHeader, 
 // Same rule as control-plane (common/http/validation.ts TENANT_KEY_RE).
 const TENANT_KEY_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
+// Same rule as control-plane (config/data-stores.ts DATA_STORE_NAME_RE).
+const STORE_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
+
+const storeField = (name, label, kind) => ({
+  name,
+  label,
+  required: true,
+  mono: true,
+  value: 'shared',
+  maxLength: 40,
+  hint: `${kind} store from the data-stores catalog. "shared" = with other tenants; a dedicated store holds this tenant only. Cannot be changed later.`,
+  validate: (value) => (STORE_RE.test(value.trim()) ? '' : 'Use 1–40 lowercase letters, digits or hyphens.'),
+});
+
 /** Resolves to the created TenantView, or null. */
 export async function createTenantDialog() {
   const created = await formDialog({
@@ -27,8 +41,11 @@ export async function createTenantDialog() {
         validate: (value) => (TENANT_KEY_RE.test(value.trim()) ? '' : 'Use 1–63 lowercase letters, digits or hyphens, not starting or ending with a hyphen.'),
         wide: true,
       },
+      storeField('metricsStore', 'Metrics store', 'VictoriaMetrics'),
+      storeField('logsStore', 'Logs store', 'OpenSearch'),
     ],
-    onSubmit: ({ tenantKey }) => api.tenants.create(tenantKey.trim()),
+    onSubmit: ({ tenantKey, metricsStore, logsStore }) =>
+      api.tenants.create({ tenantKey: tenantKey.trim(), metricsStore: metricsStore.trim(), logsStore: logsStore.trim() }),
   });
 
   if (created) {

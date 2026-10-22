@@ -18,6 +18,10 @@ interface KeycloakPayload {
   groups?: string[];
 
   vm_account_id?: string | string[];
+
+  metrics_store?: string | string[];
+
+  logs_store?: string | string[];
 }
 
 @Injectable()
@@ -41,14 +45,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   validate(payload: KeycloakPayload): AuthUser {
-    const rawVmAccountId = payload.vm_account_id;
-
-    const vmAccountIds =
-      rawVmAccountId === undefined
-        ? []
-        : Array.isArray(rawVmAccountId)
-          ? rawVmAccountId
-          : [rawVmAccountId];
+    const vmAccountIds = asList(payload.vm_account_id);
 
     return {
       sub: payload.sub,
@@ -66,6 +63,19 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         [],
 
       vmAccountIds,
+
+      metricsStores: asList(payload.metrics_store),
+
+      logsStores: asList(payload.logs_store),
     };
   }
+}
+
+/** A multivalued claim may come as one string or as an array. */
+function asList(value: string | string[] | undefined): string[] {
+  if (value === undefined) {
+    return [];
+  }
+
+  return Array.isArray(value) ? value : [value];
 }

@@ -8,11 +8,11 @@ import {
   UseGuards,
 } from '@nestjs/common';
 
-import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 
 import type { AuthUser } from '../auth/auth-user';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { DataStoreRegistry, resolveStore } from '../stores/data-stores';
 
 import { platformScope, resolveQueryAccess } from './access';
 import { HttpProxyService } from './http-proxy.service';
@@ -27,7 +27,7 @@ type AuthenticatedRequest = Request & {
 export class VictoriaMetricsController {
   constructor(
     private readonly proxy: HttpProxyService,
-    private readonly config: ConfigService,
+    private readonly stores: DataStoreRegistry,
   ) {}
 
   @All('*path')
@@ -84,7 +84,12 @@ export class VictoriaMetricsController {
 
     const requiredPrefix = `/select/${tenantSegment}/prometheus/api/v1/`;
 
-    const baseUrl = this.config.getOrThrow<string>('VICTORIAMETRICS_URL');
+    // TODO-28: the VictoriaMetrics cluster that holds this tenant's data.
+    const store = this.stores.metrics(
+      resolveStore(req.user.metricsStores, access.platformAdmin, req.headers),
+    );
+
+    const baseUrl = store.queryUrl;
 
     /*
      * Validate the FINAL path (after URL normalization), not the raw

@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# TODO-28: the data stores tenants can be placed in (N:1 shared, or 1:1
+# with "exclusive": true). Read by control-plane (names, exclusive) and
+# query-gateway (read URLs, read account env prefix). The write side of
+# each store is an exporter + pipeline in the otel-gateway config.
+# A tenant's stores are chosen when it is created and never change.
+# See README.md here ("Adding a data store").
+configMapGenerator:
+  - name: data-stores
+    files:
+      - stores.json

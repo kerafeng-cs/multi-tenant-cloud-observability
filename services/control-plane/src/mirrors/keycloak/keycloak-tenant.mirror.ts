@@ -24,6 +24,8 @@ const LEGACY_ATTRIBUTE = 'mtco_tenant';
  * name = tenantKey, attribute vm_account_id = [n] (aggregated into the
  * `vm_account_id` claim that query-gateway trusts), plus the ownership
  * marker mtco_tenant_id = [tenants.id].
+ * TODO-28: metrics_store / logs_store = [store name] the same way (claims
+ * that tell query-gateway which store to read).
  */
 @Injectable()
 export class KeycloakTenantMirror implements MirrorHandler {
@@ -75,6 +77,8 @@ export class KeycloakTenantMirror implements MirrorHandler {
     const attributes: Attributes = {
       ...withoutKey(group?.attributes, LEGACY_ATTRIBUTE),
       vm_account_id: [tenant.vmAccountId],
+      metrics_store: [tenant.metricsStore],
+      logs_store: [tenant.logsStore],
       [TENANT_MARKER]: [tenant.id],
     };
 

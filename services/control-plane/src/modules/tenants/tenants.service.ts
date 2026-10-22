@@ -6,8 +6,13 @@ import {
   PG_UNIQUE_VIOLATION,
   pgErrorCode,
 } from '../../common/db/database.service';
-import { ConflictError } from '../../common/errors/domain-error';
+import { ConflictError, InvalidError } from '../../common/errors/domain-error';
 import { AppConfig } from '../../config/app-config';
+import {
+  DATA_STORE_KINDS,
+  DEFAULT_DATA_STORE,
+  type DataStoreKind,
+} from '../../config/data-stores';
 import { KeycloakTenantMirror } from '../../mirrors/keycloak/keycloak-tenant.mirror';
 import { OutboxRepository } from '../../sync/outbox.repository';
 import { AgentRepository } from '../agents/agent.repository';
@@ -17,6 +22,13 @@ import { UserRepository } from '../users/user.repository';
 
 import { type TenantRecord, TenantRepository } from './tenant.repository';
 import { type TenantView, toTenantView } from './views';
+
+export interface CreateTenantInput {
+  tenantKey: string;
+  /** Catalog name; default `shared`. Fixed for the tenant's lifetime. */
+  metricsStore?: string;
+  logsStore?: string;
+}
 
 /**
  * Tenant lifecycle. Authorization (platform-admin, tenant scope) is done
@@ -47,13 +59,57 @@ export class TenantsService {
   /**
    * One transaction: row + Keycloak group (inline, so users can be created
    * right away) + outbox (Grafana org). Keycloak down → nothing created.
+   *
+   * TODO-28: the stores must exist in the catalog; an exclusive (1:1)
+   * store takes at most one tenant that is not deleted (checked under a
+   * per-store lock, so two concurrent creates cannot both get it).
    */
-  async create(_actor: Actor, tenantKey: string): Promise<TenantView> {
+  async create(_actor: Actor, input: CreateTenantInput): Promise<TenantView> {
+    const tenantKey = input.tenantKey;
+
+    const stores: Record<DataStoreKind, string> = {
+      metrics: input.metricsStore ?? DEFAULT_DATA_STORE,
+      logs: input.logsStore ?? DEFAULT_DATA_STORE,
+    };
+
+    for (const kind of DATA_STORE_KINDS) {
+      if (!this.config.dataStores[kind][stores[kind]]) {
+        throw new InvalidError(
+          'unknown_data_store',
+          `There is no ${kind} store named "${stores[kind]}"`,
+          {
+            kind,
+            store: stores[kind],
+            available: Object.keys(this.config.dataStores[kind]).sort(),
+          },
+        );
+      }
+    }
+
     return this.db.transaction(async (tx) => {
+      for (const kind of DATA_STORE_KINDS) {
+        if (!this.config.dataStores[kind][stores[kind]].exclusive) {
+          continue;
+        }
+
+        await this.tenants.lockStore(tx, kind, stores[kind]);
+
+        if ((await this.tenants.countInStore(tx, kind, stores[kind])) > 0) {
+          throw new ConflictError(
+            'data_store_taken',
+            `The ${kind} store "${stores[kind]}" is dedicated to another tenant`,
+            { kind, store: stores[kind] },
+          );
+        }
+      }
+
       let tenant: TenantRecord;
 
       try {
-        tenant = await this.tenants.insertActive(tx, tenantKey);
+        tenant = await this.tenants.insertActive(tx, tenantKey, {
+          metricsStore: stores.metrics,
+          logsStore: stores.logs,
+        });
       } catch (error) {
         if (pgErrorCode(error) === PG_UNIQUE_VIOLATION) {
           throw new ConflictError(

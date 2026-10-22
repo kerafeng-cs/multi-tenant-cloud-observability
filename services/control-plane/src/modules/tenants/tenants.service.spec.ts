@@ -11,7 +11,9 @@ import type { UserRepository } from '../users/user.repository';
 import type { TenantRepository } from './tenant.repository';
 import { TenantsService } from './tenants.service';
 
-function setup(opts: { insertError?: unknown } = {}) {
+function setup(
+  opts: { insertError?: unknown; inStore?: number; config?: AppConfig } = {},
+) {
   const { db, tx } = fakeDb();
 
   const created = tenant({
@@ -31,6 +33,8 @@ function setup(opts: { insertError?: unknown } = {}) {
       .fn()
       .mockResolvedValue({ ...created, keycloakGroupId: 'g-new' }),
     markDeleted: jest.fn().mockResolvedValue(undefined),
+    lockStore: jest.fn().mockResolvedValue(undefined),
+    countInStore: jest.fn().mockResolvedValue(opts.inStore ?? 0),
   };
 
   const users = {
@@ -55,7 +59,7 @@ function setup(opts: { insertError?: unknown } = {}) {
     enrollments as unknown as EnrollmentRepository,
     outbox as unknown as OutboxRepository,
     keycloakTenants as unknown as KeycloakTenantMirror,
-    AppConfig.forTest(),
+    opts.config ?? AppConfig.forTest(),
   );
 
   return {
@@ -76,14 +80,22 @@ describe('TenantsService.create', () => {
   it('row + inline Keycloak group + outbox in one transaction', async () => {
     const { service, tenants, keycloakTenants, outbox, tx, created } = setup();
 
-    const view = await service.create(ACTORS.platformAdmin, 'gamma-tenant');
+    const view = await service.create(ACTORS.platformAdmin, {
+      tenantKey: 'gamma-tenant',
+    });
 
-    expect(tenants.insertActive).toHaveBeenCalledWith(tx, 'gamma-tenant');
+    expect(tenants.insertActive).toHaveBeenCalledWith(tx, 'gamma-tenant', {
+      metricsStore: 'shared',
+      logsStore: 'shared',
+    });
+    expect(tenants.lockStore).not.toHaveBeenCalled();
     expect(keycloakTenants.apply).toHaveBeenCalledWith(created, tx);
     expect(outbox.enqueue).toHaveBeenCalledWith(tx, 'tenant', 'new');
     expect(view).toEqual({
       tenantKey: 'gamma-tenant',
       vmAccountId: '2',
+      metricsStore: 'shared',
+      logsStore: 'shared',
       grafanaOrgId: 7,
       status: 'active',
       createdAt: created.createdAt,
@@ -96,11 +108,92 @@ describe('TenantsService.create', () => {
     });
 
     await expect(
-      service.create(ACTORS.platformAdmin, 'beta-tenant'),
+      service.create(ACTORS.platformAdmin, { tenantKey: 'beta-tenant' }),
     ).rejects.toMatchObject({
       code: 'tenant_key_reserved',
     });
     expect(keycloakTenants.apply).not.toHaveBeenCalled();
+  });
+});
+
+describe('TenantsService.create (data stores, TODO-28)', () => {
+  const catalog = {
+    metrics: {
+      shared: { name: 'shared', kind: 'metrics' as const, exclusive: false },
+      'dedicated-1': {
+        name: 'dedicated-1',
+        kind: 'metrics' as const,
+        exclusive: true,
+      },
+      pool: { name: 'pool', kind: 'metrics' as const, exclusive: false },
+    },
+    logs: {
+      shared: { name: 'shared', kind: 'logs' as const, exclusive: false },
+    },
+  };
+  const config = AppConfig.forTest({ dataStores: catalog });
+
+  it('a free exclusive store: locked, counted, then the tenant is created in it', async () => {
+    const { service, tenants, tx } = setup({ config });
+
+    const view = await service.create(ACTORS.platformAdmin, {
+      tenantKey: 'gamma-tenant',
+      metricsStore: 'dedicated-1',
+    });
+
+    expect(tenants.lockStore).toHaveBeenCalledWith(tx, 'metrics', 'dedicated-1');
+    expect(tenants.countInStore).toHaveBeenCalledWith(
+      tx,
+      'metrics',
+      'dedicated-1',
+    );
+    expect(tenants.insertActive).toHaveBeenCalledWith(tx, 'gamma-tenant', {
+      metricsStore: 'dedicated-1',
+      logsStore: 'shared',
+    });
+    expect(view.tenantKey).toBe('gamma-tenant');
+  });
+
+  it('an exclusive store already used → 409 data_store_taken, nothing created', async () => {
+    const { service, tenants, keycloakTenants } = setup({ config, inStore: 1 });
+
+    await expect(
+      service.create(ACTORS.platformAdmin, {
+        tenantKey: 'delta-tenant',
+        metricsStore: 'dedicated-1',
+      }),
+    ).rejects.toMatchObject({ status: 409, code: 'data_store_taken' });
+    expect(tenants.insertActive).not.toHaveBeenCalled();
+    expect(keycloakTenants.apply).not.toHaveBeenCalled();
+  });
+
+  it('a shared (non-exclusive) store takes many tenants: no lock, no count', async () => {
+    const { service, tenants } = setup({ config, inStore: 5 });
+
+    await service.create(ACTORS.platformAdmin, {
+      tenantKey: 'gamma-tenant',
+      metricsStore: 'pool',
+    });
+
+    expect(tenants.lockStore).not.toHaveBeenCalled();
+    expect(tenants.countInStore).not.toHaveBeenCalled();
+    expect(tenants.insertActive).toHaveBeenCalled();
+  });
+
+  it('a store missing from the catalog → 400 unknown_data_store (before any DB work)', async () => {
+    const { service, tenants } = setup({ config });
+
+    await expect(
+      service.create(ACTORS.platformAdmin, {
+        tenantKey: 'gamma-tenant',
+        logsStore: 'dedicated-1',
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: 'unknown_data_store',
+      details: { kind: 'logs', store: 'dedicated-1', available: ['shared'] },
+    });
+    expect(tenants.insertActive).not.toHaveBeenCalled();
   });
 });
 

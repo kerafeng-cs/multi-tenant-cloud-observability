@@ -20,10 +20,11 @@ export interface AgentCredentials {
 }
 
 /**
- * Realm client scope created by the keycloak-bootstrap Job. Its 4 mappers
- * (audience otel-gateway + agent_id, tenant_id, vm_account_id from the
- * service-account user attributes) give every agent token the FROZEN
- * claims (§18.3.5). It is ADDED to the client's default scopes, so the
+ * Realm client scope created by the keycloak-bootstrap Job. Its mappers
+ * (audience otel-gateway + agent_id, tenant_id, vm_account_id and, since
+ * TODO-28, metrics_store, logs_store from the service-account user
+ * attributes) give every agent token the FROZEN claims (§18.3.5);
+ * otel-gateway routes each request to the tenant's stores by them. It is ADDED to the client's default scopes, so the
  * realm defaults (basic → sub, …) stay exactly as before.
  */
 export const AGENT_CLIENT_SCOPE = 'mtco-agent';
@@ -172,6 +173,8 @@ export class KeycloakAgentMirror implements MirrorHandler {
       agent_id: [agent.id],
       tenant_id: [agent.tenantKey],
       vm_account_id: [agent.vmAccountId],
+      metrics_store: [agent.metricsStore],
+      logs_store: [agent.logsStore],
     };
 
     const current = serviceAccount.attributes ?? {};

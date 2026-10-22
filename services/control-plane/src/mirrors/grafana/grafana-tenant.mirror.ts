@@ -193,22 +193,29 @@ export class GrafanaTenantMirror implements MirrorHandler {
    * fixed tenant scope (TODO-19, 2026-10-16): every request from THIS org
    * carries the tenant key and VictoriaMetrics account, and query-gateway
    * narrows a platform admin (who otherwise sees every tenant) to it.
+   * TODO-28: each datasource also names the tenant's store of its kind
+   * (X-MTCO-Scope-Store), so a platform admin reads the right cluster.
    * Tenant users are bound by their token; the gateway ignores the scope
    * for them, so the headers can only ever narrow, never widen.
    */
   private datasources(tenant: TenantRecord): GrafanaDatasourceDefinition[] {
     const base = this.config.queryGatewayUrl;
 
-    const scope = {
+    const scope = (store: string) => ({
       jsonData: {
         httpHeaderName1: 'X-MTCO-Scope-Tenant',
         httpHeaderName2: 'X-MTCO-Scope-Account',
+        httpHeaderName3: 'X-MTCO-Scope-Store',
       },
       secureJsonData: {
         httpHeaderValue1: tenant.tenantKey,
         httpHeaderValue2: tenant.vmAccountId,
+        httpHeaderValue3: store,
       },
-    };
+    });
+
+    const logs = scope(tenant.logsStore);
+    const metrics = scope(tenant.metricsStore);
 
     return [
       {
@@ -222,17 +229,17 @@ export class GrafanaTenantMirror implements MirrorHandler {
           database: 'otel-logs*',
           timeField: '@timestamp',
           oauthPassThru: true,
-          ...scope.jsonData,
+          ...logs.jsonData,
         },
-        secureJsonData: scope.secureJsonData,
+        secureJsonData: logs.secureJsonData,
       },
       {
         uid: 'victoriametrics',
         name: 'VictoriaMetrics',
         type: 'prometheus',
         url: `${base}/query/victoriametrics`,
-        jsonData: { oauthPassThru: true, ...scope.jsonData },
-        secureJsonData: scope.secureJsonData,
+        jsonData: { oauthPassThru: true, ...metrics.jsonData },
+        secureJsonData: metrics.secureJsonData,
         isDefault: true,
       },
     ];

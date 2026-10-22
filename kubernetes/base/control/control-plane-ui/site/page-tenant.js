@@ -60,6 +60,8 @@ export function tenantPage(view, { tenantKey, tab = 'overview' }) {
           meta: [
             metaItem('Status', tag(tenant.status)),
             metaItem('VM account', h('code', {}, tenant.vmAccountId)),
+            metaItem('Metrics store', h('code', {}, tenant.metricsStore ?? 'shared')),
+            metaItem('Logs store', h('code', {}, tenant.logsStore ?? 'shared')),
             metaItem('Grafana org', tenant.grafanaOrgId === null ? tag('provisioning') : `#${tenant.grafanaOrgId}`),
             metaItem('Created', h('span', { title: formatDate(tenant.createdAt) }, timeEl(tenant.createdAt))),
           ],

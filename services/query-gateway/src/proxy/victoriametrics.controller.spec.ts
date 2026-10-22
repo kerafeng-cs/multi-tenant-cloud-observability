@@ -1,8 +1,12 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
-import type { ConfigService } from '@nestjs/config';
+import {
+  BadRequestException,
+  ForbiddenException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import type { Request, Response } from 'express';
 
 import type { AuthUser } from '../auth/auth-user';
+import { DataStoreRegistry } from '../stores/data-stores';
 
 import type { HttpProxyService } from './http-proxy.service';
 import { VictoriaMetricsController } from './victoriametrics.controller';
@@ -23,6 +27,8 @@ const viewer: AuthUser = {
   roles: ['viewer'],
   groups: ['tenant-a'],
   vmAccountIds: ['2'],
+  metricsStores: [],
+  logsStores: [],
 };
 
 const platformAdmin: AuthUser = {
@@ -31,6 +37,8 @@ const platformAdmin: AuthUser = {
   roles: ['platform-admin'],
   groups: ['admin-tenant'],
   vmAccountIds: ['1'],
+  metricsStores: ['shared'],
+  logsStores: ['shared'],
 };
 
 function setup() {
@@ -40,11 +48,18 @@ function setup() {
 
   const proxy = { forward } as unknown as HttpProxyService;
 
-  const config = {
-    getOrThrow: jest.fn().mockReturnValue('http://vmselect:8481'),
-  } as unknown as ConfigService;
+  const stores = new DataStoreRegistry({
+    metrics: {
+      shared: { name: 'shared', queryUrl: 'http://vmselect:8481' },
+      'dedicated-1': {
+        name: 'dedicated-1',
+        queryUrl: 'http://vmselect-dedicated-1:8481',
+      },
+    },
+    logs: {},
+  });
 
-  const controller = new VictoriaMetricsController(proxy, config);
+  const controller = new VictoriaMetricsController(proxy, stores);
 
   const call = (
     user: AuthUser,
@@ -63,8 +78,9 @@ function setup() {
     );
 
   const targetPath = (): string => forward.mock.calls[0][5] as string;
+  const baseUrl = (): string => forward.mock.calls[0][0] as string;
 
-  return { call, forward, targetPath };
+  return { call, forward, targetPath, baseUrl };
 }
 
 describe('VictoriaMetricsController', () => {
@@ -119,6 +135,83 @@ describe('VictoriaMetricsController', () => {
       await expect(
         call(platformAdmin, '/api/v1/query?query=up', 'GET', headers),
       ).rejects.toThrow(BadRequestException);
+      expect(forward).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('data stores (TODO-28)', () => {
+    it('a tenant user without a store claim reads the shared store', async () => {
+      const { call, baseUrl } = setup();
+
+      await call(viewer, '/api/v1/query?query=up');
+
+      expect(baseUrl()).toBe('http://vmselect:8481');
+    });
+
+    it('a tenant user reads the store of its claim; headers cannot move it', async () => {
+      const { call, baseUrl, targetPath } = setup();
+
+      await call(
+        { ...viewer, metricsStores: ['dedicated-1'] },
+        '/api/v1/query?query=up',
+        'GET',
+        { 'x-mtco-scope-store': 'shared' },
+      );
+
+      expect(baseUrl()).toBe('http://vmselect-dedicated-1:8481');
+      expect(targetPath()).toBe('/select/2/prometheus/api/v1/query?query=up');
+    });
+
+    it('a platform admin follows the scope header of the tenant org datasource', async () => {
+      const { call, baseUrl, targetPath } = setup();
+
+      await call(platformAdmin, '/api/v1/query?query=up', 'GET', {
+        'x-mtco-scope-tenant': 'tenant-b',
+        'x-mtco-scope-account': '7',
+        'x-mtco-scope-store': 'dedicated-1',
+      });
+
+      expect(baseUrl()).toBe('http://vmselect-dedicated-1:8481');
+      expect(targetPath()).toBe('/select/7/prometheus/api/v1/query?query=up');
+    });
+
+    it('a platform admin without a store header (org 1) reads the shared store', async () => {
+      const { call, baseUrl } = setup();
+
+      await call(platformAdmin, '/api/v1/query?query=up');
+
+      expect(baseUrl()).toBe('http://vmselect:8481');
+    });
+
+    it('a store this gateway does not know → 503, nothing forwarded', async () => {
+      const { call, forward } = setup();
+
+      await expect(
+        call({ ...viewer, metricsStores: ['dedicated-9'] }, '/api/v1/query'),
+      ).rejects.toThrow(ServiceUnavailableException);
+      expect(forward).not.toHaveBeenCalled();
+    });
+
+    it('several or malformed store claims → 403; malformed header → 400', async () => {
+      const { call, forward } = setup();
+
+      await expect(
+        call(
+          { ...viewer, metricsStores: ['shared', 'dedicated-1'] },
+          '/api/v1/query',
+        ),
+      ).rejects.toThrow(ForbiddenException);
+
+      await expect(
+        call({ ...viewer, metricsStores: ['../x'] }, '/api/v1/query'),
+      ).rejects.toThrow(ForbiddenException);
+
+      await expect(
+        call(platformAdmin, '/api/v1/query', 'GET', {
+          'x-mtco-scope-store': 'Bad Store',
+        }),
+      ).rejects.toThrow(BadRequestException);
+
       expect(forward).not.toHaveBeenCalled();
     });
   });

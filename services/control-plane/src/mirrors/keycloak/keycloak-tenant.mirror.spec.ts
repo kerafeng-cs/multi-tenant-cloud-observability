@@ -35,9 +35,35 @@ function setup(opts: {
   return { mirror, keycloak, tenants };
 }
 
-const desiredAttributes = { vm_account_id: ['2'], mtco_tenant_id: [IDS.alpha] };
+const desiredAttributes = {
+  vm_account_id: ['2'],
+  metrics_store: ['shared'],
+  logs_store: ['shared'],
+  mtco_tenant_id: [IDS.alpha],
+};
 
 describe('KeycloakTenantMirror (active tenant)', () => {
+  it('puts the tenant data stores on the group (metrics_store / logs_store claims, TODO-28)', async () => {
+    const { mirror, keycloak } = setup({});
+
+    await mirror.apply(
+      tenant({
+        keycloakGroupId: null,
+        metricsStore: 'dedicated-1',
+        logsStore: 'dedicated-2',
+      }),
+    );
+
+    expect(keycloak.createGroup).toHaveBeenCalledWith({
+      name: 'alpha-tenant',
+      attributes: {
+        ...desiredAttributes,
+        metrics_store: ['dedicated-1'],
+        logs_store: ['dedicated-2'],
+      },
+    });
+  });
+
   it('creates the group with vm_account_id and the marker, stores its id', async () => {
     const { mirror, keycloak, tenants } = setup({});
 

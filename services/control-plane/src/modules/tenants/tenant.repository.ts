@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 import { BaseRepository } from '../../common/db/base.repository';
 import type { Queryable } from '../../common/db/database.service';
+import type { DataStoreKind } from '../../config/data-stores';
 
 export type TenantStatus = 'active' | 'deleted';
 
@@ -9,6 +10,9 @@ export interface TenantRecord {
   id: string;
   tenantKey: string;
   vmAccountId: string;
+  /** TODO-28: data store names (catalog), fixed at creation. */
+  metricsStore: string;
+  logsStore: string;
   keycloakGroupId: string | null;
   grafanaOrgId: number | null;
   status: TenantStatus;
@@ -21,6 +25,8 @@ interface TenantRow {
   id: string;
   tenant_key: string;
   vm_account_id: string;
+  metrics_store: string;
+  logs_store: string;
   keycloak_group_id: string | null;
   grafana_org_id: string | null;
   status: TenantStatus;
@@ -30,7 +36,8 @@ interface TenantRow {
 }
 
 const COLUMNS = `
-  id, tenant_key, vm_account_id, keycloak_group_id, grafana_org_id,
+  id, tenant_key, vm_account_id, metrics_store, logs_store,
+  keycloak_group_id, grafana_org_id,
   status, created_at, updated_at, deleted_at
 `;
 
@@ -59,14 +66,50 @@ export class TenantRepository extends BaseRepository<TenantRow, TenantRecord> {
   }
 
   /** Throws a unique violation (23505) if the key was ever used. */
-  async insertActive(q: Queryable, tenantKey: string): Promise<TenantRecord> {
+  async insertActive(
+    q: Queryable,
+    tenantKey: string,
+    stores: { metricsStore: string; logsStore: string },
+  ): Promise<TenantRecord> {
     const created = await this.one(
-      `INSERT INTO tenants (tenant_key, status) VALUES ($1, 'active') RETURNING ${COLUMNS}`,
-      [tenantKey],
+      `INSERT INTO tenants (tenant_key, status, metrics_store, logs_store)
+       VALUES ($1, 'active', $2, $3) RETURNING ${COLUMNS}`,
+      [tenantKey, stores.metricsStore, stores.logsStore],
       q,
     );
 
     return created as TenantRecord;
+  }
+
+  /**
+   * TODO-28: serializes the creates that pick the same store until the
+   * caller's transaction ends, so two tenants cannot both take an
+   * exclusive (1:1) store.
+   */
+  async lockStore(
+    q: Queryable,
+    kind: DataStoreKind,
+    store: string,
+  ): Promise<void> {
+    await this.exec(`SELECT pg_advisory_xact_lock(hashtext($1))`, [
+      `mtco-data-store:${kind}:${store}`,
+    ], q);
+  }
+
+  /** Tenants (not deleted) placed in a store. */
+  async countInStore(
+    q: Queryable,
+    kind: DataStoreKind,
+    store: string,
+  ): Promise<number> {
+    const column = kind === 'metrics' ? 'metrics_store' : 'logs_store';
+
+    const result = await q.query<{ n: string }>(
+      `SELECT count(*) AS n FROM tenants WHERE status <> 'deleted' AND ${column} = $1`,
+      [store],
+    );
+
+    return Number(result.rows[0]?.n ?? 0);
   }
 
   async markDeleted(q: Queryable, id: string): Promise<void> {
@@ -133,6 +176,8 @@ export class TenantRepository extends BaseRepository<TenantRow, TenantRecord> {
       id: row.id,
       tenantKey: row.tenant_key,
       vmAccountId: String(row.vm_account_id),
+      metricsStore: row.metrics_store,
+      logsStore: row.logs_store,
       keycloakGroupId: row.keycloak_group_id,
       grafanaOrgId:
         row.grafana_org_id === null ? null : Number(row.grafana_org_id),

@@ -19,3 +19,4 @@ configMapGenerator:
       - 006_agent_enrollments.sql
       - 007_platform_admin_tenant.sql
       - 008_support_access_admin.sql
+      - 009_data_stores.sql

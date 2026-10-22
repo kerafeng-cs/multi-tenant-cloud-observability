@@ -8,6 +8,12 @@
 
 import type { LogLevel } from '@nestjs/common';
 
+import {
+  type DataStoreCatalog,
+  defaultDataStores,
+  parseDataStores,
+} from './data-stores';
+
 /** From the most to the least severe; LOG_LEVEL keeps a prefix of it. */
 export const LOG_LEVELS: readonly LogLevel[] = [
   'fatal',
@@ -60,6 +66,9 @@ export interface AppConfigValues {
 
   queryGatewayUrl: string;
 
+  /** TODO-28: data stores tenants can be placed in (DATA_STORES_JSON). */
+  dataStores: DataStoreCatalog;
+
   platformAdmin: {
     username: string;
     email: string;
@@ -106,6 +115,7 @@ export class AppConfig implements AppConfigValues {
   declare readonly otelGatewayPublicUrl: string;
   declare readonly grafana: AppConfigValues['grafana'];
   declare readonly queryGatewayUrl: string;
+  declare readonly dataStores: DataStoreCatalog;
   declare readonly platformAdmin: AppConfigValues['platformAdmin'];
   declare readonly supportAccess: AppConfigValues['supportAccess'];
   declare readonly resyncIntervalMs: number;
@@ -163,6 +173,8 @@ export class AppConfig implements AppConfigValues {
         'QUERY_GATEWAY_URL',
         'http://query-gateway:8080',
       ),
+
+      dataStores: reader.dataStores('DATA_STORES_JSON'),
 
       platformAdmin: {
         username: reader.optional('PLATFORM_ADMIN_USERNAME', ''),
@@ -234,6 +246,7 @@ export class AppConfig implements AppConfigValues {
         defaultTenant: 'admin-tenant',
       },
       queryGatewayUrl: 'http://query-gateway:8080',
+      dataStores: defaultDataStores(),
       platformAdmin: {
         username: '',
         email: '',
@@ -326,6 +339,10 @@ class EnvReader {
 
     this.problems.push(`${key} must be true or false`);
     return fallback;
+  }
+
+  dataStores(key: string): DataStoreCatalog {
+    return parseDataStores(this.env[key], this.problems, key);
   }
 
   /** `warn` → fatal, error, warn. */

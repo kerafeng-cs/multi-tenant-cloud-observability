@@ -122,6 +122,13 @@ spec:
             - name: PORT
               value: "8080"
 
+            # TODO-28: data stores a tenant can be created in.
+            - name: DATA_STORES_JSON
+              valueFrom:
+                configMapKeyRef:
+                  name: data-stores
+                  key: stores.json
+
             # Human JWT verification.
             - name: KEYCLOAK_ISSUER
               valueFrom:

@@ -32,6 +32,33 @@ processors:
         from_context: auth.claims.vm_account_id
         action: upsert
 
+      # TODO-28: the tenant's data stores (control-plane writes them into
+      # the agent token). The routing connectors below pick the exporters
+      # of that store; resource/route-done removes them before export.
+      # Delete first: when a token has no store claim, upsert keeps what
+      # the AGENT sent, and an agent must never pick its own store.
+      - key: mtco.metrics.store
+        action: delete
+
+      - key: mtco.logs.store
+        action: delete
+
+      - key: mtco.metrics.store
+        from_context: auth.claims.metrics_store
+        action: upsert
+
+      - key: mtco.logs.store
+        from_context: auth.claims.logs_store
+        action: upsert
+
+  resource/route-done:
+    attributes:
+      - key: mtco.metrics.store
+        action: delete
+
+      - key: mtco.logs.store
+        action: delete
+
   # Batches stay large: each OpenSearch bulk costs a roughly fixed
   # round trip + disk sync, so throughput ~ batch size. Benchmark
   # 2026-10-19: 1,000-2,000 per bulk dropped OpenSearch to ~4,200 logs/s
@@ -42,6 +69,34 @@ processors:
     send_batch_size: 8192
     send_batch_max_size: 10000
     timeout: 1s
+
+# TODO-28: one pipeline per data store (catalog: ConfigMap data-stores).
+# - claim missing → the shared store (tokens minted before TODO-28; every
+#   existing tenant is in the shared stores);
+# - a store this gateway does not know → otlphttp/refuse: the agent gets
+#   a retryable 503 and sends again later. Data never goes to a wrong
+#   store and is never dropped silently.
+# Adding a store = an exporter + a pipeline + a route here, AND its name
+# in the "unknown" conditions (kubernetes/base/storage/catalog/README.md).
+# Verified with otelcol-contrib 0.160.0: the AccountID header (from the
+# request's auth context) still reaches the exporter through the
+# connector, unlike after a batch processor.
+connectors:
+  routing/metrics:
+    default_pipelines: [metrics/shared]
+    error_mode: ignore
+    table:
+      - context: resource
+        condition: attributes["mtco.metrics.store"] != nil and attributes["mtco.metrics.store"] != "shared"
+        pipelines: [metrics/unknown-store]
+
+  routing/logs:
+    default_pipelines: [logs/shared]
+    error_mode: ignore
+    table:
+      - context: resource
+        condition: attributes["mtco.logs.store"] != nil and attributes["mtco.logs.store"] != "shared"
+        pipelines: [logs/unknown-store]
 
 extensions:
   basicauth/opensearch:
@@ -116,6 +171,15 @@ exporters:
       enabled: true
       max_elapsed_time: 5m
 
+  # Nothing listens on port 1: every export fails at once, without queue
+  # or retry, so the receiver answers 503 (retryable) to the agent.
+  otlphttp/refuse:
+    endpoint: http://127.0.0.1:1
+    sending_queue:
+      enabled: false
+    retry_on_failure:
+      enabled: false
+
 service:
   # TODO-25: own metrics (accepted/refused/sent/failed per receiver and
   # exporter, queue size, HTTP server latency) for vmagent. "detailed"
@@ -136,12 +200,33 @@ service:
     - headers_setter/victoriametrics
 
   pipelines:
+    # NEVER put batch in a metrics pipeline: the AccountID header comes
+    # from each request's auth context, which batching drops.
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, resource/tenant]
+      exporters: [routing/metrics]
+
+    metrics/shared:
+      receivers: [routing/metrics]
+      processors: [resource/route-done]
       exporters: [prometheus_remote_write/victoriametrics]
 
+    metrics/unknown-store:
+      receivers: [routing/metrics]
+      exporters: [otlphttp/refuse]
+
+    # Batching happens after routing: one batch never mixes stores.
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, resource/tenant, batch]
+      processors: [memory_limiter, resource/tenant]
+      exporters: [routing/logs]
+
+    logs/shared:
+      receivers: [routing/logs]
+      processors: [resource/route-done, batch]
       exporters: [opensearch]
+
+    logs/unknown-store:
+      receivers: [routing/logs]
+      exporters: [otlphttp/refuse]

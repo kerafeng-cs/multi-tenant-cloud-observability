@@ -65,6 +65,15 @@ spec:
             - name: KEYCLOAK_AUDIENCE
               value: query-gateway
 
+            # TODO-28: data stores (read URL + read account env prefix of
+            # each). Per-store OpenSearch accounts come from env
+            # <PREFIX>_USERNAME / _PASSWORD; the shared one is OPENSEARCH_*.
+            - name: DATA_STORES_JSON
+              valueFrom:
+                configMapKeyRef:
+                  name: data-stores
+                  key: stores.json
+
             - name: TENANT_BACKENDS_JSON
               valueFrom:
                 configMapKeyRef:

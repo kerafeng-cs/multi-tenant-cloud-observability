@@ -83,7 +83,8 @@ export const api = {
   tenants: {
     list: () => request('GET', '/tenants'),
     get: (key) => request('GET', tenant(key)),
-    create: (tenantKey) => request('POST', '/tenants', { tenantKey }),
+    // body: { tenantKey, metricsStore?, logsStore? } (TODO-28)
+    create: (body) => request('POST', '/tenants', body),
     remove: (key) => request('DELETE', tenant(key)),
   },
 

@@ -23,10 +23,15 @@ usage() {
 Usage: mtco <command> [arguments] [options]
 
   me                                   who you are (role, tenant)
+  claims                               the claims of your access token that
+                                       the gateways use (tenant, account,
+                                       data stores); never the token itself
 
   tenants list                         (platform admin)
   tenants get    TENANT
-  tenants create TENANT
+  tenants create TENANT [--metrics-store STORE] [--logs-store STORE]
+                                       stores from the data-stores catalog
+                                       (default shared); fixed for good
   tenants delete TENANT                deletes its users, agents and grants too
 
   users list                 [--tenant TENANT]
@@ -78,6 +83,8 @@ done
 TENANT=""
 MINUTES=""
 GRANT_ROLE=""
+METRICS_STORE=""
+LOGS_STORE=""
 ACTIVE=""
 ARGS=()
 
@@ -90,6 +97,10 @@ while [ "$#" -gt 0 ]; do
     --role) GRANT_ROLE="${2:?--role needs a value}"; shift 2 ;;
     --role=*) GRANT_ROLE="${1#*=}"; shift ;;
     --active) ACTIVE="true"; shift ;;
+    --metrics-store) METRICS_STORE="${2:?--metrics-store needs a value}"; shift 2 ;;
+    --metrics-store=*) METRICS_STORE="${1#*=}"; shift ;;
+    --logs-store) LOGS_STORE="${2:?--logs-store needs a value}"; shift 2 ;;
+    --logs-store=*) LOGS_STORE="${1#*=}"; shift ;;
     -h | --help) usage; exit 0 ;;
     --) shift; ARGS+=("$@"); break ;;
     -*) die "unknown option $1 (see mtco --help)" ;;
@@ -264,7 +275,10 @@ cmd_tenants() {
     create)
       key=$(segment TENANT "$ARG")
       login
-      api POST /tenants "$(jq -cn --arg k "$key" '{tenantKey: $k}')"
+      api POST /tenants "$(jq -cn --arg k "$key" --arg m "$METRICS_STORE" --arg l "$LOGS_STORE" \
+        '{tenantKey: $k}
+         + (if $m == "" then {} else {metricsStore: $m} end)
+         + (if $l == "" then {} else {logsStore: $l} end)')"
       ;;
     delete)
       key=$(segment TENANT "$ARG")
@@ -462,10 +476,29 @@ cmd_sync() {
   esac
 }
 
+# The token's payload (claims only: no signature, not usable as a token).
+cmd_claims() {
+  local payload
+
+  payload=$(cut -d. -f2 <<<"$TOKEN" | tr '_-' '/+')
+
+  while [ $(( ${#payload} % 4 )) -ne 0 ]; do
+    payload="$payload="
+  done
+
+  base64 -d <<<"$payload" 2>/dev/null |
+    jq '{username: .preferred_username, roles: .realm_access.roles, groups,
+         vm_account_id, metrics_store, logs_store, aud, exp: (.exp | todate)}'
+}
+
 case "$COMMAND" in
   me)
     login
     api GET /me
+    ;;
+  claims)
+    login
+    cmd_claims
     ;;
   tenants) cmd_tenants ;;
   users) cmd_users ;;

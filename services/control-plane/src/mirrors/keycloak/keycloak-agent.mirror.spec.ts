@@ -18,6 +18,8 @@ const CONVERGED_ATTRIBUTES = {
   agent_id: [IDS.agent],
   tenant_id: ['alpha-tenant'],
   vm_account_id: ['2'],
+  metrics_store: ['shared'],
+  logs_store: ['shared'],
 };
 
 function client(overrides: Partial<KcClient> = {}): KcClient {

@@ -4,4 +4,7 @@ export interface AuthUser {
   roles: string[];
   groups: string[];
   vmAccountIds: string[];
+  /** TODO-28: metrics_store / logs_store claims (empty = shared). */
+  metricsStores: string[];
+  logsStores: string[];
 }

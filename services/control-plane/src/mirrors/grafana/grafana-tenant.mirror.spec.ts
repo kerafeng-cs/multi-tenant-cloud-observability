@@ -120,13 +120,41 @@ describe('GrafanaTenantMirror (active)', () => {
           oauthPassThru: true,
           httpHeaderName1: 'X-MTCO-Scope-Tenant',
           httpHeaderName2: 'X-MTCO-Scope-Account',
+          httpHeaderName3: 'X-MTCO-Scope-Store',
         }),
       );
       expect(ds.secureJsonData).toEqual({
         httpHeaderValue1: 'alpha-tenant',
         httpHeaderValue2: '2',
+        httpHeaderValue3: 'shared',
       });
     }
+  });
+
+  it('each datasource names the tenant store of its own kind (TODO-28)', async () => {
+    const { mirror, grafana } = setup(
+      tenant({
+        grafanaOrgId: null,
+        metricsStore: 'dedicated-1',
+        logsStore: 'shared',
+      }),
+    );
+
+    await mirror.sync(IDS.alpha);
+
+    const stores = Object.fromEntries(
+      (
+        grafana.upsertDatasource.mock.calls as [
+          number,
+          { uid: string; secureJsonData?: Record<string, string> },
+        ][]
+      ).map(([, ds]) => [ds.uid, ds.secureJsonData?.httpHeaderValue3]),
+    );
+
+    expect(stores).toEqual({
+      victoriametrics: 'dedicated-1',
+      opensearch: 'shared',
+    });
   });
 
   it('re-syncs (Grafana only) the tenant users and open grant holders, once each', async () => {

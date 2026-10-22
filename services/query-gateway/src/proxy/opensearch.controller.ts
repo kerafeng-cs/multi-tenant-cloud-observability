@@ -1,10 +1,10 @@
 import { All, Controller, Req, Res, UseGuards } from '@nestjs/common';
 
-import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 
 import type { AuthUser } from '../auth/auth-user';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { DataStoreRegistry, resolveStore } from '../stores/data-stores';
 
 import { platformScope, resolveQueryAccess } from './access';
 import { HttpProxyService } from './http-proxy.service';
@@ -20,7 +20,7 @@ type AuthenticatedRequest = Request & {
 export class OpenSearchController {
   constructor(
     private readonly proxy: HttpProxyService,
-    private readonly config: ConfigService,
+    private readonly stores: DataStoreRegistry,
     private readonly tenant: OpenSearchTenantService,
   ) {}
 
@@ -31,7 +31,13 @@ export class OpenSearchController {
   ): Promise<void> {
     const access = resolveQueryAccess(req.user);
 
-    const baseUrl = this.config.getOrThrow<string>('OPENSEARCH_URL');
+    // TODO-28: the OpenSearch cluster (and its read account) that holds
+    // this tenant's logs.
+    const store = this.stores.logs(
+      resolveStore(req.user.logsStores, access.platformAdmin, req.headers),
+    );
+
+    const baseUrl = store.queryUrl;
 
     /*
      * Reject "." / ".." segments before any path-based decision is made,
@@ -49,11 +55,8 @@ export class OpenSearchController {
 
     this.tenant.enforce(req, tenantId, access.platformAdmin);
 
-    const username = this.config.getOrThrow<string>('OPENSEARCH_USERNAME');
-    const password = this.config.getOrThrow<string>('OPENSEARCH_PASSWORD');
-
     const authorization = `Basic ${Buffer.from(
-      `${username}:${password}`,
+      `${store.username}:${store.password}`,
     ).toString('base64')}`;
 
     await this.proxy.forward(

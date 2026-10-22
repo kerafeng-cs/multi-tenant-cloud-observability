@@ -18,6 +18,18 @@ export class TenantView {
   vmAccountId!: string;
 
   @ApiProperty({
+    example: 'shared',
+    description: 'VictoriaMetrics data store (metrics_store claim)',
+  })
+  metricsStore!: string;
+
+  @ApiProperty({
+    example: 'shared',
+    description: 'OpenSearch data store (logs_store claim)',
+  })
+  logsStore!: string;
+
+  @ApiProperty({
     type: Number,
     nullable: true,
     description: 'Grafana org id; null until the org is provisioned',
@@ -37,6 +49,8 @@ export function toTenantView(tenant: TenantRecord): TenantView {
   return {
     tenantKey: tenant.tenantKey,
     vmAccountId: tenant.vmAccountId,
+    metricsStore: tenant.metricsStore,
+    logsStore: tenant.logsStore,
     grafanaOrgId: tenant.grafanaOrgId,
     status: tenant.status,
     createdAt: tenant.createdAt,

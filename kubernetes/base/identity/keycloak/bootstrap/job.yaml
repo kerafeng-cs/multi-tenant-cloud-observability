@@ -960,7 +960,9 @@ spec:
               ensure_agent_scope_mapper otel-gateway-audience \
                 '"protocol":"openid-connect","protocolMapper":"oidc-audience-mapper","consentRequired":false,"config":{"included.client.audience":"otel-gateway","id.token.claim":"false","access.token.claim":"true","introspection.token.claim":"true"}'
 
-              for PAIR in agent-id:agent_id tenant-id:tenant_id vm-account-id:vm_account_id; do
+              # TODO-28: metrics_store / logs_store = the tenant's data stores;
+              # otel-gateway routes each request to them.
+              for PAIR in agent-id:agent_id tenant-id:tenant_id vm-account-id:vm_account_id metrics-store:metrics_store logs-store:logs_store; do
                 MAPPER=${PAIR%%:*}
                 ATTRIBUTE=${PAIR#*:}
 
@@ -1053,6 +1055,25 @@ spec:
                 '"protocol":"openid-connect","protocolMapper":"oidc-audience-mapper","consentRequired":false,"config":{"included.client.audience":"control-plane","id.token.claim":"false","access.token.claim":"true","introspection.token.claim":"true"}'
 
               echo "Control-plane UI client ready."
+
+
+              # ========================================
+              # Data store claims for people (TODO-28)
+              # ========================================
+
+              # metrics_store / logs_store: group attributes written by
+              # control-plane (like vm_account_id), aggregated from the
+              # user's tenant group. query-gateway reads the tenant's data
+              # from the store these claims name. Grafana forwards the
+              # user's access token (oauthPassThru); the CLI sends its own.
+              for CLIENT_UUID in "$GRAFANA_CLIENT_UUID" "$MTCO_CLI_CLIENT_UUID"; do
+                for PAIR in metrics-store:metrics_store logs-store:logs_store; do
+                  ensure_client_mapper "$CLIENT_UUID" "${PAIR%%:*}" \
+                    "\"protocol\":\"openid-connect\",\"protocolMapper\":\"oidc-usermodel-attribute-mapper\",\"consentRequired\":false,\"config\":{\"user.attribute\":\"${PAIR#*:}\",\"claim.name\":\"${PAIR#*:}\",\"jsonType.label\":\"String\",\"multivalued\":\"true\",\"aggregate.attrs\":\"true\",\"id.token.claim\":\"false\",\"access.token.claim\":\"true\",\"userinfo.token.claim\":\"false\",\"introspection.token.claim\":\"true\"}"
+                done
+              done
+
+              echo "Data store claims ready."
 
 
               # ========================================

@@ -7,6 +7,7 @@ resources:
   - ../../base/foundation
   - ../../base/storage/victoriametrics
   - ../../base/storage/opensearch
+  - ../../base/storage/catalog
   - ../../base/ingest/otel-gateway
   - ../../base/identity/keycloak
   - ../../base/query
@@ -79,11 +80,11 @@ configMapGenerator:
 images:
   - name: query-gateway
     newName: kerafeng/query-gateway
-    newTag: v0.1.15
+    newTag: v0.1.16
 
   - name: control-plane
     newName: kerafeng/control-plane
-    newTag: v0.11.1
+    newTag: v0.12.0
 
 patches:
   - target:

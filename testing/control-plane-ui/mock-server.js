@@ -22,8 +22,8 @@ const ago = (min) => new Date(Date.now() - min * 60000).toISOString();
 // ------------------------------------------------------------- state
 const S = {
   tenants: [
-    { tenantKey: 'alpha-tenant', vmAccountId: '2', grafanaOrgId: 2, status: 'active', createdAt: ago(60 * 24 * 9) },
-    { tenantKey: 'beta-tenant', vmAccountId: '3', grafanaOrgId: null, status: 'active', createdAt: ago(30) },
+    { tenantKey: 'alpha-tenant', vmAccountId: '2', metricsStore: 'shared', logsStore: 'shared', grafanaOrgId: 2, status: 'active', createdAt: ago(60 * 24 * 9) },
+    { tenantKey: 'beta-tenant', vmAccountId: '3', metricsStore: 'shared', logsStore: 'shared', grafanaOrgId: null, status: 'active', createdAt: ago(30) },
   ],
   users: [
     { id: uuid(), tenantKey: null, username: 'dat', email: 'dat@example.com', firstName: 'Dat', lastName: 'Le', role: 'platform-admin', enabled: true, createdAt: ago(60 * 24 * 20) },
@@ -168,8 +168,15 @@ async function apiRoute(req, res, url) {
     const key = String(body.tenantKey ?? '').trim();
     if (validation(res, /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(key) ? [] : [['tenantKey', 'tenantKey must be 1-63 lowercase letters, digits or hyphens, not starting or ending with a hyphen']])) return;
     if (usedKeys.has(key)) return fail(res, 409, 'tenant_key_taken', 'Tenant key already used');
+    // TODO-28: mock catalog = shared + one exclusive dedicated-1 per kind.
+    const metricsStore = String(body.metricsStore ?? 'shared').trim();
+    const logsStore = String(body.logsStore ?? 'shared').trim();
+    for (const [kind, store] of [['metrics', metricsStore], ['logs', logsStore]]) {
+      if (!['shared', 'dedicated-1'].includes(store)) return fail(res, 400, 'unknown_data_store', `There is no ${kind} store named "${store}"`);
+      if (store === 'dedicated-1' && S.tenants.some((x) => x.status === 'active' && x[`${kind}Store`] === store)) return fail(res, 409, 'data_store_taken', `The ${kind} store "${store}" is dedicated to another tenant`);
+    }
     usedKeys.add(key);
-    const t = { tenantKey: key, vmAccountId: String(nextVm++), grafanaOrgId: null, status: 'active', createdAt: iso(now()) };
+    const t = { tenantKey: key, vmAccountId: String(nextVm++), metricsStore, logsStore, grafanaOrgId: null, status: 'active', createdAt: iso(now()) };
     S.tenants.push(t);
     setTimeout(() => (t.grafanaOrgId = Number(t.vmAccountId) + 10), 1500);
     return send(res, 201, t);

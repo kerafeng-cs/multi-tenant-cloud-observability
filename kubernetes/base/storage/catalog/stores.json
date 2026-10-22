@@ -1,0 +1,15 @@
+{
+  "metrics": {
+    "shared": {
+      "queryUrl": "http://vmselect:8481",
+      "exclusive": false
+    }
+  },
+  "logs": {
+    "shared": {
+      "queryUrl": "https://opensearch:9200",
+      "credentials": "OPENSEARCH",
+      "exclusive": false
+    }
+  }
+}
