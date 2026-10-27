@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# TODO-28 phase B: the lab's dedicated cell "dedicated-1" (1:1). One small
+# VictoriaMetrics cluster (1 vminsert, 1 vmselect, 1 vmstorage) and one
+# single-node OpenSearch, both reserved for one tenant ("exclusive": true
+# in ../../stores.json). Shapes follow the shared stores; only names,
+# `app` labels and sizes differ (`app` labels must be unique: the shared
+# Services select by `app`).
+#
+# Wiring outside this folder (all in the development overlay):
+# - ../../stores.json            catalog entry (control-plane, query-gateway)
+# - ../../otel-gateway-stores.yaml  exporters, pipelines and routes
+# - ../../kustomization.yaml     NetworkPolicy values for the new `app`s
+#
+# The OpenSearch bootstrap Job of the base runs a second time here against
+# this store (same service accounts, 1 shard / 0 replicas on one node).
+
+resources:
+  - victoriametrics.yaml
+  - opensearch.yaml
+  - opensearch-certificate.yaml
+  - bootstrap
+

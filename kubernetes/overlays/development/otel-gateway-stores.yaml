@@ -1,0 +1,76 @@
+# TODO-28 phase B: the development overlay's extra data stores, merged by
+# the collector over the base config (second --config: maps merge, lists
+# such as a routing table are REPLACED, so each table below is complete).
+# Store "dedicated-1" = cells/dedicated-1. Exporter settings copy the
+# shared ones (base collector.yaml); only endpoints and queue size differ.
+connectors:
+  routing/metrics:
+    table:
+      - context: resource
+        condition: attributes["mtco.metrics.store"] == "dedicated-1"
+        pipelines: [metrics/dedicated-1]
+
+      - context: resource
+        condition: attributes["mtco.metrics.store"] != nil and attributes["mtco.metrics.store"] != "shared" and attributes["mtco.metrics.store"] != "dedicated-1"
+        pipelines: [metrics/unknown-store]
+
+  routing/logs:
+    table:
+      - context: resource
+        condition: attributes["mtco.logs.store"] == "dedicated-1"
+        pipelines: [logs/dedicated-1]
+
+      - context: resource
+        condition: attributes["mtco.logs.store"] != nil and attributes["mtco.logs.store"] != "shared" and attributes["mtco.logs.store"] != "dedicated-1"
+        pipelines: [logs/unknown-store]
+
+exporters:
+  prometheus_remote_write/dedicated-1:
+    endpoint: http://vminsert-dedicated-1:8480/insert/prometheus/api/v1/write
+
+    resource_constant_labels:
+      included:
+        - tenant.id
+        - agent.id
+        - host.name
+        - host.arch
+        - os.type
+
+    auth:
+      authenticator: headers_setter/victoriametrics
+
+  # Same ingest account as the shared store (created there by the
+  # bootstrap Job). Queue: 32 MiB per pod, one tenant in the lab.
+  opensearch/dedicated-1:
+    http:
+      endpoint: https://opensearch-dedicated-1:9200
+      auth:
+        authenticator: basicauth/opensearch
+      tls:
+        insecure_skip_verify: true
+
+    logs_index: "otel-logs-%{tenant.id}"
+    logs_index_fallback: no_tenant
+    bulk_action: create
+
+    sending_queue:
+      enabled: true
+      num_consumers: 2
+      sizer: bytes
+      queue_size: 33554432
+
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 5m
+
+service:
+  pipelines:
+    metrics/dedicated-1:
+      receivers: [routing/metrics]
+      processors: [resource/route-done]
+      exporters: [prometheus_remote_write/dedicated-1]
+
+    logs/dedicated-1:
+      receivers: [routing/logs]
+      processors: [resource/route-done, batch]
+      exporters: [opensearch/dedicated-1]

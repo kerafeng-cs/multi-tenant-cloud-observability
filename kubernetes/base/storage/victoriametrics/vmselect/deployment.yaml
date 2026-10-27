@@ -29,11 +29,13 @@ spec:
               containerPort: 8481
 
           resources:
+            # Benchmark 2026-10-17: 2 x 500m was the read-path ceiling (fully
+            # used and throttled at 50 queries/s). 1 core per pod doubles it.
             requests:
-              cpu: 100m
+              cpu: 250m
               memory: 128Mi
             limits:
-              cpu: 500m
+              cpu: "1"
               memory: 384Mi
 
       topologySpreadConstraints:

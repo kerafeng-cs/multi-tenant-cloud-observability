@@ -55,28 +55,44 @@ a tenant would leave its history behind; a DB trigger refuses the change).
 
 ## Adding a data store
 
-Example: a dedicated VictoriaMetrics cluster `dedicated-1`.
+The base ships only `shared`. Extra stores belong to an environment
+overlay; the development overlay's `dedicated-1` (TODO-28 phase B) is the
+worked example:
+
+| Piece | development overlay file |
+|---|---|
+| The cluster(s) | `cells/dedicated-1/` |
+| Catalog (replaces this one) | `stores.json` + `configMapGenerator` `data-stores`, `behavior: replace` |
+| Write side | `otel-gateway-stores.yaml`, added to ConfigMap `otel-gateway-config` (`behavior: merge`) and loaded as a second `--config` |
+| Internal-only traffic | patch of NetworkPolicy `internal-only` |
 
 1. **Deploy the cluster.** Its pods need their OWN `app` labels (for
    example `vminsert-dedicated-1`): the Services of the shared cluster
    select by `app`, so reusing `app: vminsert` would mix the two
    clusters. Add the new `app` values to the `internal-only`
-   NetworkPolicy and to the vmagent scrape config.
-2. **Catalog** — add it to `stores.json`:
+   NetworkPolicy. vmagent already scrapes `vminsert|vmselect|vmstorage`
+   with any `-<suffix>`. A new OpenSearch needs its own certificate from
+   the `observability-ca` Issuer and the bootstrap Job pointed at it
+   (`OPENSEARCH_URL`, `LOGS_SHARDS`, `LOGS_REPLICAS`; see
+   `cells/dedicated-1/bootstrap`).
+2. **Catalog** — the overlay's `stores.json` lists `shared` plus the new
+   store, e.g.
    `"dedicated-1": { "queryUrl": "http://vmselect-dedicated-1:8481", "exclusive": true }`.
-   For an OpenSearch store also give `credentials` and add the two env
-   variables (from a Secret) to the query-gateway Deployment.
-3. **otel-gateway** (`kubernetes/base/ingest/otel-gateway/config/collector.yaml`):
+   An OpenSearch store also names `credentials` (the shared read account
+   `OPENSEARCH` works if the bootstrap Job created it there; another
+   prefix needs its two env variables on the query-gateway Deployment).
+3. **otel-gateway** — the overlay's extra collector file holds:
    - an exporter for the store (same settings as the shared one, new
-     endpoint; for OpenSearch its own ingest account and queue);
+     endpoint; for OpenSearch its own queue);
    - a pipeline `metrics/dedicated-1` (receivers `[routing/metrics]`,
      processors `[resource/route-done]`; logs also `batch`, after it);
-   - a route in `routing/metrics`:
-     `condition: attributes["mtco.metrics.store"] == "dedicated-1"`;
-   - add `and attributes["mtco.metrics.store"] != "dedicated-1"` to the
-     unknown-store condition.
+   - the COMPLETE routing tables of `routing/metrics` and `routing/logs`
+     (the collector merges maps but replaces lists): a route
+     `attributes["mtco.metrics.store"] == "dedicated-1"`, and the
+     unknown-store route extended with
+     `and attributes["mtco.metrics.store"] != "dedicated-1"`.
 4. Apply. Then create the tenant with
-   `tools/mtco tenants create gamma-tenant --metrics-store dedicated-1`.
+   `tools/mtco tenants create gamma-tenant --metrics-store dedicated-1 --logs-store dedicated-1`.
 
 Order matters: the gateways must know a store before any tenant is placed
 in it; until then its agents get 503 (and retry) instead of losing data.

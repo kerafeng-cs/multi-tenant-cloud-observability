@@ -71,7 +71,12 @@ spec:
             - -ec
             - |
               CA=/etc/observability/ca/ca.crt
-              OPENSEARCH_URL=https://opensearch:9200
+              # Defaults = the shared logs store. A dedicated store reuses
+              # this Job with its own URL and shard layout (TODO-28, e.g.
+              # kubernetes/overlays/development/cells/dedicated-1).
+              OPENSEARCH_URL=${OPENSEARCH_URL:-https://opensearch:9200}
+              LOGS_SHARDS=${LOGS_SHARDS:-3}
+              LOGS_REPLICAS=${LOGS_REPLICAS:-1}
 
               echo "Waiting for OpenSearch..."
 
@@ -238,8 +243,8 @@ spec:
                   "priority": 200,
                   "template": {
                     "settings": {
-                      "index.number_of_shards": 3,
-                      "index.number_of_replicas": 1,
+                      "index.number_of_shards": '"${LOGS_SHARDS}"',
+                      "index.number_of_replicas": '"${LOGS_REPLICAS}"',
                       "index.refresh_interval": "5s"
                     }
                   }

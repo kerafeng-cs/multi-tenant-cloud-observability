@@ -32,8 +32,10 @@ spec:
             requests:
               cpu: 100m
               memory: 128Mi
+            # Benchmark 2026-10-21: vminsert + vmstorage used ~0.11 core in total
+            # at 13,000 points/s; 300m per pod leaves room for ~4x that.
             limits:
-              cpu: 500m
+              cpu: 300m
               memory: 384Mi
 
       topologySpreadConstraints:

@@ -1,0 +1,24 @@
+{
+  "metrics": {
+    "shared": {
+      "queryUrl": "http://vmselect:8481",
+      "exclusive": false
+    },
+    "dedicated-1": {
+      "queryUrl": "http://vmselect-dedicated-1:8481",
+      "exclusive": true
+    }
+  },
+  "logs": {
+    "shared": {
+      "queryUrl": "https://opensearch:9200",
+      "credentials": "OPENSEARCH",
+      "exclusive": false
+    },
+    "dedicated-1": {
+      "queryUrl": "https://opensearch-dedicated-1:9200",
+      "credentials": "OPENSEARCH",
+      "exclusive": true
+    }
+  }
+}

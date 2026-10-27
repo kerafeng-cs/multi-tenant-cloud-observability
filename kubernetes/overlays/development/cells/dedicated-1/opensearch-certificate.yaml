@@ -1,0 +1,36 @@
+# Server certificate of the dedicated OpenSearch, from the same Issuer as
+# the shared one, so query-gateway and the bootstrap Job trust it with the
+# CA they already have (opensearch-tls ca.crt).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: opensearch-dedicated-1-tls
+
+spec:
+  secretName: opensearch-dedicated-1-tls
+  commonName: opensearch-dedicated-1
+
+  duration: 2160h
+  renewBefore: 360h
+
+  privateKey:
+    algorithm: RSA
+    size: 2048
+    encoding: PKCS8
+    rotationPolicy: Always
+
+  usages:
+    - server auth
+    - client auth
+
+  dnsNames:
+    - opensearch-dedicated-1
+    - opensearch-dedicated-1.observability
+    - opensearch-dedicated-1.observability.svc
+    - opensearch-dedicated-1.observability.svc.cluster.local
+    - opensearch-dedicated-1-0.opensearch-dedicated-1-headless
+    - opensearch-dedicated-1-0.opensearch-dedicated-1-headless.observability.svc.cluster.local
+
+  issuerRef:
+    name: observability-ca
+    kind: Issuer

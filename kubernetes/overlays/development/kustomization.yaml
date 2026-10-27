@@ -15,6 +15,8 @@ resources:
   - ../../base/control/control-plane-ui
   - ../../base/control/control-plane-db
   - ../../base/monitoring
+  # TODO-28 phase B: dedicated cell (1:1) of this lab
+  - cells/dedicated-1
 
 secretGenerator:
   - name: opensearch-bootstrap
@@ -62,6 +64,20 @@ secretGenerator:
       - platform-admin.env
 
 configMapGenerator:
+  # TODO-28 phase B: this environment's data stores = shared + dedicated-1
+  # (replaces the base catalog, which knows only "shared").
+  - name: data-stores
+    behavior: replace
+    files:
+      - stores.json
+
+  # ...and how otel-gateway writes to them: a second config file merged
+  # over the base one (see the patch of the otel-gateway Deployment).
+  - name: otel-gateway-config
+    behavior: merge
+    files:
+      - stores.yaml=otel-gateway-stores.yaml
+
   # TODO-04: the ONLY place that knows this environment's public URLs.
   # Clients outside the cluster (browsers, agents) reach them through the
   # enterprise DNS + entry point (the mentor's ingress/LB; environment/lab
@@ -93,3 +109,38 @@ patches:
       - op: add
         path: /spec/volumeClaimTemplates/0/spec/storageClassName
         value: local-path
+
+  # TODO-28 phase B: otel-gateway loads the overlay's stores on top of the
+  # base config (same ConfigMap, second key).
+  - target:
+      kind: Deployment
+      name: otel-gateway
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --config=/etc/otelcol-contrib/stores.yaml
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value:
+          name: config
+          mountPath: /etc/otelcol-contrib/stores.yaml
+          subPath: stores.yaml
+          readOnly: true
+
+  # ...and the dedicated cell's pods are internal like the shared stores.
+  - target:
+      kind: NetworkPolicy
+      name: internal-only
+    patch: |-
+      - op: add
+        path: /spec/podSelector/matchExpressions/0/values/-
+        value: vminsert-dedicated-1
+      - op: add
+        path: /spec/podSelector/matchExpressions/0/values/-
+        value: vmselect-dedicated-1
+      - op: add
+        path: /spec/podSelector/matchExpressions/0/values/-
+        value: vmstorage-dedicated-1
+      - op: add
+        path: /spec/podSelector/matchExpressions/0/values/-
+        value: opensearch-dedicated-1

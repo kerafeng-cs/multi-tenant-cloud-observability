@@ -1,0 +1,34 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The base Job, renamed opensearch-bootstrap-dedicated-1 and pointed at
+# this store. Secrets (admin, ingest and query accounts) are the shared
+# ones; the CA is the same Issuer's.
+resources:
+  - ../../../../../base/storage/opensearch/bootstrap
+
+nameSuffix: -dedicated-1
+
+patches:
+  - target:
+      kind: Job
+      name: opensearch-bootstrap
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OPENSEARCH_URL
+          value: https://opensearch-dedicated-1:9200
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: LOGS_SHARDS
+          value: "1"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: LOGS_REPLICAS
+          value: "0"
+      - op: replace
+        path: /spec/template/metadata/labels/app
+        value: opensearch-bootstrap-dedicated-1

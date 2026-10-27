@@ -4,7 +4,8 @@ global:
 
 scrape_configs:
   # /metrics that the platform components already expose. A pod is scraped
-  # when its `app` label and the NAME of a declared container port match:
+  # when its `app` label and the NAME of a declared container port match
+  # (VictoriaMetrics of every data store: vminsert, vminsert-dedicated-1...):
   # no annotations on the workloads, no Service needed.
   - job_name: platform
     kubernetes_sd_configs:
@@ -21,7 +22,7 @@ scrape_configs:
       - source_labels:
           - __meta_kubernetes_pod_label_app
           - __meta_kubernetes_pod_container_port_name
-        regex: "(vminsert|vmselect|vmstorage|vmagent|control-plane|query-gateway|grafana);http|keycloak;management|otel-gateway;telemetry|postgres-exporter;pg-.+"
+        regex: "((vminsert|vmselect|vmstorage)(-[a-z0-9-]+)?|vmagent|control-plane|query-gateway|grafana);http|keycloak;management|otel-gateway;telemetry|postgres-exporter;pg-.+"
         action: keep
 
       - source_labels: [__meta_kubernetes_pod_label_app]
