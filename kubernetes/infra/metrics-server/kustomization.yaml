@@ -1,0 +1,32 @@
+# Cluster infrastructure, NOT part of the application overlays.
+# Installed once per cluster:  kubectl apply -k kubernetes/infra/metrics-server
+#
+# Why (TODO-34): the HorizontalPodAutoscalers of the platform read CPU and
+# memory per pod from the Metrics API (metrics.k8s.io), which this cluster
+# did not have. Most managed clusters already ship metrics-server; check
+# with `kubectl get apiservice v1beta1.metrics.k8s.io` before installing.
+#
+# components.yaml = upstream kubernetes-sigs/metrics-server v0.8.1
+# release asset components.yaml, unmodified (cluster is Kubernetes 1.36).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - components.yaml
+
+patches:
+  # Lab only: the kubelets serve self-signed certificates without IP SANs
+  # (2026-10-27: "x509: cannot validate certificate for 10.0.x.x because it
+  # doesn't contain any IP SANs"), so metrics-server cannot verify them.
+  # The connection stays TLS-encrypted and authenticated by the
+  # ServiceAccount token; only the kubelet's identity is not verified.
+  # A cluster whose kubelets have CA-signed serving certificates
+  # (serverTLSBootstrap) should drop this patch.
+  - target:
+      kind: Deployment
+      name: metrics-server
+      namespace: kube-system
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --kubelet-insecure-tls

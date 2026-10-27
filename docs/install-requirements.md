@@ -61,3 +61,19 @@ the cluster:
 Everything is stored as the platform tenant (`admin-tenant`) and shown in
 Grafana org 1, folder "Platform", dashboard "Platform health". There is no
 alerting.
+
+## Metrics API (TODO-34)
+
+otel-gateway, query-gateway, vminsert, vmselect and Keycloak scale with
+HorizontalPodAutoscalers on CPU (otel-gateway also on memory). They need
+the cluster's Metrics API (`metrics.k8s.io`, normally metrics-server):
+
+- check: `kubectl get apiservice v1beta1.metrics.k8s.io` shows
+  `Available True`, and `kubectl top pods -n observability` prints numbers;
+- without it the autoscalers keep each Deployment at its minimum replica
+  count (otel-gateway 3, the others 2) and never scale;
+- the lab cluster installs it from `kubernetes/infra/metrics-server`.
+
+Plan node capacity for the maximum replica counts (otel-gateway 6,
+query-gateway / vminsert / vmselect 4, Keycloak 3).
+

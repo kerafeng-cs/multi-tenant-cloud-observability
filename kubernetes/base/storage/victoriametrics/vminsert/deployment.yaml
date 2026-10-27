@@ -4,7 +4,9 @@ metadata:
   name: vminsert
 
 spec:
-  replicas: 2
+  # TODO-34: replica count is owned by the HorizontalPodAutoscaler
+  # (hpa.yaml, min 2 / max 4); a replicas field here would reset it
+  # on every apply.
 
   selector:
     matchLabels:

@@ -1,0 +1,46 @@
+# TODO-34: horizontal autoscaling from CPU (metrics-server required, see
+# docs/install-requirements.md).
+# Target = 60% of the CPU limit (500m) per pod as an absolute value, not a
+# percentage of requests. Benchmark 2026-10-17/18: latency stays flat below
+# ~70% of the limit and climbs fast above it; 60% plus the HPA's 10%
+# tolerance keeps pods under that knee while a new pod starts.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: otel-gateway
+
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: otel-gateway
+
+  minReplicas: 3
+  maxReplicas: 6
+
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: AverageValue
+          averageValue: 300m
+
+    # The log queue lives in RAM: add a pod before memory_limiter starts
+    # refusing data (60% of the 1 GiB limit = ~614 MiB per pod).
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: AverageValue
+          averageValue: 450Mi
+
+  behavior:
+    # Scale up at once (default); scale down one pod per minute after five
+    # quiet minutes, so a short dip does not drop capacity.
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60

@@ -10,7 +10,9 @@ spec:
   # extra Service or RBAC is needed; members talk on 7800/57800 inside the
   # namespace (allowed by NetworkPolicy internal-only). Sessions are
   # replicated, so either pod can serve any login or token request.
-  replicas: 2
+  # TODO-34: replica count is owned by the HorizontalPodAutoscaler
+  # (hpa.yaml, min 2 / max 3); a replicas field here would reset it
+  # on every apply.
 
   selector:
     matchLabels:

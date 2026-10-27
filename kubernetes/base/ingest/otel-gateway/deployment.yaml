@@ -6,7 +6,9 @@ metadata:
 spec:
   # TODO-21: 3 x 1 GiB instead of 2 x 512 MiB: more room for the log
   # queue, and losing one pod keeps two thirds of the capacity.
-  replicas: 3
+  # TODO-34: replica count is owned by the HorizontalPodAutoscaler
+  # (hpa.yaml, min 3 / max 6); a replicas field here would reset it
+  # on every apply.
 
   selector:
     matchLabels:
