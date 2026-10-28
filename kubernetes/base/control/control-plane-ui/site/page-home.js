@@ -73,7 +73,7 @@ function platformOverview(view) {
     ([tenants, grants, sync]) => {
       const provisioned = tenants.items.filter((t) => t.grafanaOrgId !== null).length;
       const health = syncHealth(sync);
-      const pending = sync.targets.keycloak.pending + sync.targets.grafana.pending;
+      const pending = Object.values(sync.targets).reduce((sum, t) => sum + t.pending, 0);
       const recent = [...tenants.items].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 6);
 
       return [
@@ -120,13 +120,13 @@ function platformOverview(view) {
               h(
                 'div',
                 { class: 'target-mini' },
-                ['keycloak', 'grafana'].map((name) => {
+                ['keycloak', 'grafana', 'opensearch'].map((name) => {
                   const t = sync.targets[name];
 
                   return h(
                     'div',
                     { class: 'target-mini-item' },
-                    h('span', { class: 'target-name' }, name === 'keycloak' ? 'Keycloak' : 'Grafana'),
+                    h('span', { class: 'target-name' }, { keycloak: 'Keycloak', grafana: 'Grafana', opensearch: 'OpenSearch' }[name]),
                     tag(t.failing ? 'failing' : t.pending ? 'pending' : 'healthy'),
                     h('span', { class: 'muted small' }, `${t.pending} pending · ${t.failing} failing`),
                   );

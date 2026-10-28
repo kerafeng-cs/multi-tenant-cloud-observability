@@ -20,3 +20,4 @@ configMapGenerator:
       - 007_platform_admin_tenant.sql
       - 008_support_access_admin.sql
       - 009_data_stores.sql
+      - 010_opensearch_mirror.sql

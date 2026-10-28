@@ -52,12 +52,16 @@ function setup() {
     new OpenSearchTenantService(),
   );
 
-  const search = (user: AuthUser, headers: Record<string, string> = {}) =>
+  const search = (
+    user: AuthUser,
+    headers: Record<string, string> = {},
+    path = '/otel-logs*/_search',
+  ) =>
     controller.proxyRequest(
       {
         method: 'POST',
-        originalUrl: '/query/opensearch/otel-logs*/_search',
-        url: '/query/opensearch/otel-logs*/_search',
+        originalUrl: `/query/opensearch${path}`,
+        url: `/query/opensearch${path}`,
         user,
         headers,
         query: {},
@@ -72,7 +76,12 @@ function setup() {
       .authorization,
   });
 
-  return { search, sent };
+  const call = () => ({
+    headers: forward.mock.calls[0][4] as Record<string, string>,
+    path: forward.mock.calls[0][5] as string,
+  });
+
+  return { search, sent, call };
 }
 
 const basic = (user: string, password: string) =>
@@ -102,5 +111,65 @@ describe('OpenSearchController data stores (TODO-28)', () => {
       baseUrl: 'https://opensearch:9200',
       authorization: basic('reader', 'pw'),
     });
+  });
+});
+
+const admin: AuthUser = {
+  ...viewer,
+  username: 'admin',
+  roles: ['platform-admin'],
+  groups: [],
+};
+
+describe('OpenSearchController tenant identity in OpenSearch (TODO-15)', () => {
+  it('a tenant user reads only its own data stream, as its OpenSearch user', async () => {
+    const { search, call } = setup();
+
+    await search(viewer);
+
+    expect(call().path).toBe(
+      '/otel-logs-tenant-a/_search?ignore_unavailable=true',
+    );
+    expect(call().headers.opendistro_security_impersonate_as).toBe(
+      'mtco-tenant-tenant-a',
+    );
+  });
+
+  it("another tenant's index in the URL is replaced by the caller's own", async () => {
+    const { search, call } = setup();
+
+    await search(viewer, {}, '/otel-logs-tenant-b/_search?size=5');
+
+    expect(call().path).toBe(
+      '/otel-logs-tenant-a/_search?size=5&ignore_unavailable=true',
+    );
+    expect(call().headers.opendistro_security_impersonate_as).toBe(
+      'mtco-tenant-tenant-a',
+    );
+  });
+
+  it('a platform admin in a tenant org runs as that tenant', async () => {
+    const { search, call } = setup();
+
+    await search(admin, {
+      'x-mtco-scope-tenant': 'tenant-b',
+      'x-mtco-scope-account': '3',
+    });
+
+    expect(call().path).toBe(
+      '/otel-logs-tenant-b/_search?ignore_unavailable=true',
+    );
+    expect(call().headers.opendistro_security_impersonate_as).toBe(
+      'mtco-tenant-tenant-b',
+    );
+  });
+
+  it('an unscoped platform admin (org 1) reads as the gateway account', async () => {
+    const { search, call } = setup();
+
+    await search(admin);
+
+    expect(call().path).toBe('/otel-logs*/_search');
+    expect(call().headers.opendistro_security_impersonate_as).toBeUndefined();
   });
 });

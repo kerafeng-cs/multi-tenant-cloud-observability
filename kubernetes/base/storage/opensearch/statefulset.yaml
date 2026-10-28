@@ -86,6 +86,15 @@ spec:
             - name: plugins.security.ssl.http.clientauth_mode
               value: OPTIONAL
 
+            # TODO-15: query-gateway (its OpenSearch account, secret
+            # opensearch-query) may run requests AS a tenant's user
+            # (mtco-tenant-<key>, created by control-plane), so OpenSearch
+            # itself limits every tenant-scoped read to that tenant's data
+            # stream. Static setting: changing it restarts the pods. The
+            # account name here must match the secret's username.
+            - name: plugins.security.authcz.rest_impersonation_user.query-gateway
+              value: mtco-tenant-*
+
           ports:
             - name: http
               containerPort: 9200

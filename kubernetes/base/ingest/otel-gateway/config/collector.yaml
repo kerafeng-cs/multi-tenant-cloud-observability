@@ -142,8 +142,9 @@ exporters:
     # One data stream per tenant (template otel-logs-* + ISM policy from
     # the OpenSearch bootstrap Job). tenant.id is the resource attribute
     # set from the token by processor resource/tenant, never by the agent.
-    # Data streams only accept "create". Readers keep using otel-logs*,
-    # which also covers the legacy otel-logs index.
+    # Data streams only accept "create". Readers: query-gateway reads a
+    # tenant's own stream as that tenant (TODO-15); platform admins read
+    # otel-logs*.
     logs_index: "otel-logs-%{tenant.id}"
     # Never used in practice (tenant.id is always set); the underscore
     # cannot appear in a tenant key, so this can never be a tenant's stream.

@@ -9,7 +9,7 @@ describe('parseDataStores (TODO-28 catalog)', () => {
     expect(problems).toEqual([]);
   });
 
-  it('reads names and exclusive; ignores the query-gateway fields', () => {
+  it('reads names, exclusive and the logs URL; ignores the query-gateway fields', () => {
     const problems: string[] = [];
 
     const catalog = parseDataStores(
@@ -19,7 +19,10 @@ describe('parseDataStores (TODO-28 catalog)', () => {
           'dedicated-1': { queryUrl: 'http://x:8481', exclusive: true },
         },
         logs: {
-          shared: { queryUrl: 'https://opensearch:9200', credentials: 'OPENSEARCH' },
+          shared: {
+            queryUrl: 'https://opensearch:9200',
+            credentials: 'OPENSEARCH',
+          },
         },
       }),
       problems,
@@ -29,10 +32,41 @@ describe('parseDataStores (TODO-28 catalog)', () => {
     expect(catalog).toEqual({
       metrics: {
         shared: { name: 'shared', kind: 'metrics', exclusive: false },
-        'dedicated-1': { name: 'dedicated-1', kind: 'metrics', exclusive: true },
+        'dedicated-1': {
+          name: 'dedicated-1',
+          kind: 'metrics',
+          exclusive: true,
+        },
       },
-      logs: { shared: { name: 'shared', kind: 'logs', exclusive: false } },
+      logs: {
+        shared: {
+          name: 'shared',
+          kind: 'logs',
+          exclusive: false,
+          url: 'https://opensearch:9200',
+        },
+      },
     });
+  });
+
+  it('a logs store needs an http(s) queryUrl (TODO-15: control-plane manages its roles)', () => {
+    const problems: string[] = [];
+
+    const catalog = parseDataStores(
+      JSON.stringify({
+        metrics: { shared: {} },
+        logs: {
+          shared: { queryUrl: 'https://opensearch:9200/' },
+          'dedicated-1': { exclusive: true },
+        },
+      }),
+      problems,
+    );
+
+    expect(problems).toEqual([
+      'DATA_STORES_JSON.logs.dedicated-1.queryUrl must be an http(s) URL',
+    ]);
+    expect(catalog.logs.shared.url).toBe('https://opensearch:9200');
   });
 
   it('lists every problem: bad JSON, missing kind, bad name, no shared, exclusive shared', () => {

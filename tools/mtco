@@ -55,7 +55,7 @@ Usage: mtco <command> [arguments] [options]
   access revoke TENANT GRANT_ID
   access all    [--active]                       every tenant (platform admin)
 
-  sync status | sync resync                      mirrors of Keycloak/Grafana (platform admin)
+  sync status | sync resync                      mirrors of Keycloak/Grafana/OpenSearch (platform admin)
 
 --tenant defaults to your own tenant (tenant admins); platform admins must
 give it. Ids are the "id" fields printed by the list commands.

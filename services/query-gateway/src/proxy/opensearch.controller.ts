@@ -8,7 +8,11 @@ import { DataStoreRegistry, resolveStore } from '../stores/data-stores';
 
 import { platformScope, resolveQueryAccess } from './access';
 import { HttpProxyService } from './http-proxy.service';
-import { OpenSearchTenantService } from './opensearch-tenant.service';
+import {
+  IMPERSONATE_HEADER,
+  OpenSearchTenantService,
+  tenantPrincipal,
+} from './opensearch-tenant.service';
 import { resolveDownstreamPath } from './safe-path';
 
 type AuthenticatedRequest = Request & {
@@ -59,6 +63,28 @@ export class OpenSearchController {
       `${store.username}:${store.password}`,
     ).toString('base64')}`;
 
+    // TODO-15: anything scoped to a tenant (tenant user, or platform admin
+    // in a tenant org) runs in OpenSearch AS that tenant: only its own
+    // data stream, enforced by OpenSearch itself on top of the filter
+    // above. Only an unscoped platform admin (org 1) reads as the gateway.
+    if (tenantId === null) {
+      await this.proxy.forward(
+        baseUrl,
+        '/query/opensearch',
+        req,
+        res,
+        { authorization },
+        targetPath,
+      );
+      return;
+    }
+
+    const scopedPath = resolveDownstreamPath(
+      baseUrl,
+      this.tenant.tenantPath(clientPath, tenantId),
+      '/',
+    );
+
     await this.proxy.forward(
       baseUrl,
       '/query/opensearch',
@@ -66,8 +92,9 @@ export class OpenSearchController {
       res,
       {
         authorization,
+        [IMPERSONATE_HEADER]: tenantPrincipal(tenantId),
       },
-      targetPath,
+      scopedPath,
     );
   }
 }

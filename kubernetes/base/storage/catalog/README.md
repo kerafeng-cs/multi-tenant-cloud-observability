@@ -27,6 +27,13 @@ a tenant would leave its history behind; a DB trigger refuses the change).
    (tenant users) or by the `X-MTCO-Scope-Store` header of the tenant org
    datasource (platform admins; org 1 = `shared`). A store it does not
    know → 503.
+5. **Logs isolation in the store (TODO-15)** — control-plane keeps a role
+   and internal user `mtco-tenant-<key>` per tenant in the tenant's logs
+   store (read `otel-logs-<key>` only). Every tenant-scoped log request
+   goes to that stream and runs AS that user (header
+   `opendistro_security_impersonate_as`), so OpenSearch itself refuses
+   other tenants' data. Only an unscoped platform admin (Grafana org 1)
+   reads `otel-logs*` with the gateway account.
 
 ## The catalog
 
@@ -74,7 +81,11 @@ worked example:
    with any `-<suffix>`. A new OpenSearch needs its own certificate from
    the `observability-ca` Issuer and the bootstrap Job pointed at it
    (`OPENSEARCH_URL`, `LOGS_SHARDS`, `LOGS_REPLICAS`; see
-   `cells/dedicated-1/bootstrap`).
+   `cells/dedicated-1/bootstrap`). It also needs the setting
+   `plugins.security.authcz.rest_impersonation_user.query-gateway:
+   mtco-tenant-*` (TODO-15, same env as the shared StatefulSet): the
+   bootstrap Job creates the control-plane account there, and
+   control-plane then creates each tenant's read role in that store.
 2. **Catalog** — the overlay's `stores.json` lists `shared` plus the new
    store, e.g.
    `"dedicated-1": { "queryUrl": "http://vmselect-dedicated-1:8481", "exclusive": true }`.

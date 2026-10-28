@@ -162,8 +162,14 @@ describe('OpenSearchTenantService', () => {
         .split('\n')
         .map((line) => JSON.parse(line) as Record<string, unknown>);
 
-      expect(lines[0]).toEqual({ index: 'otel-logs*' });
-      expect(lines[2]).toEqual({ index: 'otel-logs*' });
+      expect(lines[0]).toEqual({
+        index: 'otel-logs-tenant-a',
+        ignore_unavailable: true,
+      });
+      expect(lines[2]).toEqual({
+        index: 'otel-logs-tenant-a',
+        ignore_unavailable: true,
+      });
       expect(lines[1]).toEqual({
         query: {
           bool: { must: [{ match_all: {} }], filter: [TENANT_FILTER] },
@@ -257,6 +263,59 @@ describe('OpenSearchTenantService', () => {
           true,
         ),
       ).toThrow();
+    });
+  });
+});
+
+describe('OpenSearchTenantService.tenantPath (TODO-15)', () => {
+  const service = new OpenSearchTenantService();
+
+  it.each([
+    [
+      '/otel-logs*/_search',
+      '/otel-logs-tenant-a/_search?ignore_unavailable=true',
+    ],
+    [
+      '/_search?size=1',
+      '/otel-logs-tenant-a/_search?size=1&ignore_unavailable=true',
+    ],
+    ['/_msearch', '/otel-logs-tenant-a/_msearch?ignore_unavailable=true'],
+    [
+      '/otel-logs-tenant-b/_mapping?ignore_unavailable=false',
+      '/otel-logs-tenant-a/_mapping?ignore_unavailable=true',
+    ],
+    [
+      '/otel-logs*/_field_caps?fields=*',
+      '/otel-logs-tenant-a/_field_caps?fields=*&ignore_unavailable=true',
+    ],
+    ['/_resolve/index/otel-logs*', '/_resolve/index/otel-logs-tenant-a'],
+  ])('%s -> %s', (path, expected) => {
+    expect(service.tenantPath(path, 'tenant-a')).toBe(expected);
+  });
+
+  it('rejects other endpoints and invalid tenant keys', () => {
+    expect(() => service.tenantPath('/otel-logs*/_doc/1', 'tenant-a')).toThrow(
+      ForbiddenException,
+    );
+    expect(() => service.tenantPath('/_search', '../x')).toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('_msearch headers point at the tenant stream', () => {
+    const req = request(
+      '/_msearch',
+      Buffer.from(
+        `${JSON.stringify({ index: 'otel-logs-tenant-b' })}\n${JSON.stringify({ query: { match_all: {} } })}\n`,
+      ),
+    );
+
+    service.enforce(req, 'tenant-a', false);
+
+    const [header] = (req.body as Buffer).toString('utf8').split('\n');
+    expect(JSON.parse(header)).toEqual({
+      index: 'otel-logs-tenant-a',
+      ignore_unavailable: true,
     });
   });
 });

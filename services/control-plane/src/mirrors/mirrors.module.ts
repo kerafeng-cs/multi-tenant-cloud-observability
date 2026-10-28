@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { GrafanaModule } from '../integrations/grafana/grafana.module';
 import { KeycloakModule } from '../integrations/keycloak/keycloak.module';
+import { OpenSearchModule } from '../integrations/opensearch/opensearch.module';
 import { MIRROR_HANDLERS, type MirrorHandler } from '../sync/mirror';
 
 import { GrafanaTenantMirror } from './grafana/grafana-tenant.mirror';
@@ -10,6 +11,7 @@ import { KeycloakAgentMirror } from './keycloak/keycloak-agent.mirror';
 import { KeycloakGarbageCollector } from './keycloak/keycloak-gc';
 import { KeycloakTenantMirror } from './keycloak/keycloak-tenant.mirror';
 import { KeycloakUserMirror } from './keycloak/keycloak-user.mirror';
+import { OpenSearchTenantMirror } from './opensearch/opensearch-tenant.mirror';
 
 const MIRRORS = [
   GrafanaTenantMirror,
@@ -17,6 +19,7 @@ const MIRRORS = [
   KeycloakAgentMirror,
   KeycloakTenantMirror,
   KeycloakUserMirror,
+  OpenSearchTenantMirror,
 ];
 
 /**
@@ -24,7 +27,7 @@ const MIRRORS = [
  * Keycloak mirrors INLINE for creates (secret/password handed out once).
  */
 @Module({
-  imports: [GrafanaModule, KeycloakModule],
+  imports: [GrafanaModule, KeycloakModule, OpenSearchModule],
   providers: [
     ...MIRRORS,
     KeycloakGarbageCollector,

@@ -226,7 +226,9 @@ export class GrafanaTenantMirror implements MirrorHandler {
         jsonData: {
           flavor: 'opensearch',
           version: '3.8.0',
-          database: 'otel-logs*',
+          // TODO-15: the tenant's own data stream (query-gateway reads only
+          // this name for anything scoped to the tenant).
+          database: `otel-logs-${tenant.tenantKey}`,
           timeField: '@timestamp',
           oauthPassThru: true,
           ...logs.jsonData,

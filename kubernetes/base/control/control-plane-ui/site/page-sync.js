@@ -1,4 +1,4 @@
-// Outbox synchronisation to Keycloak and Grafana (platform-admin).
+// Outbox synchronisation to Keycloak, Grafana and OpenSearch (platform-admin).
 
 import { api } from './api.js';
 import { duration, h, icon, mount, shortId } from './dom.js';
@@ -9,6 +9,7 @@ const REFRESH_MS = 10_000;
 const TARGETS = [
   { id: 'keycloak', label: 'Keycloak', text: 'Users, groups and agent clients (identity).' },
   { id: 'grafana', label: 'Grafana', text: 'Organisations and user memberships (dashboards).' },
+  { id: 'opensearch', label: 'OpenSearch', text: 'Per-tenant read roles in each logs store.' },
 ];
 
 function targetHealth(t) {

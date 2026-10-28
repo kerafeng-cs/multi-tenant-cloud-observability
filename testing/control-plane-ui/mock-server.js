@@ -188,7 +188,7 @@ async function apiRoute(req, res, url) {
   }
   if (p === '/admin/sync/status' && M === 'GET') {
     return role('platform-admin') && send(res, 200, {
-      targets: { keycloak: { pending: 0, failing: 0, oldestPendingSeconds: 0 }, grafana: { pending: 1, failing: 1, oldestPendingSeconds: 340 } },
+      targets: { keycloak: { pending: 0, failing: 0, oldestPendingSeconds: 0 }, grafana: { pending: 1, failing: 1, oldestPendingSeconds: 340 }, opensearch: { pending: 0, failing: 0, oldestPendingSeconds: 0 } },
       recentErrors: [{ target: 'grafana', aggregateType: 'tenant', aggregateId: uuid(), attempts: 4, lastError: 'grafana POST /api/orgs -> 500 Internal Server Error' }],
     });
   }

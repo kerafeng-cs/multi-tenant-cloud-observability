@@ -21,6 +21,9 @@ export class OutboxTargets implements Record<Target, TargetStatus> {
 
   @ApiProperty({ type: TargetStatus })
   grafana!: TargetStatus;
+
+  @ApiProperty({ type: TargetStatus })
+  opensearch!: TargetStatus;
 }
 
 export class OutboxError {
@@ -40,7 +43,7 @@ export class OutboxError {
   lastError!: string | null;
 }
 
-/** GET /admin/sync/status: health of the Keycloak and Grafana mirrors. */
+/** GET /admin/sync/status: health of the Keycloak, Grafana and OpenSearch mirrors. */
 export class OutboxStatus {
   @ApiProperty({ type: OutboxTargets })
   targets!: OutboxTargets;

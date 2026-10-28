@@ -1,7 +1,7 @@
-export type UpstreamService = 'keycloak' | 'grafana';
+export type UpstreamService = 'keycloak' | 'grafana' | 'opensearch';
 
 /**
- * A call to Keycloak or Grafana failed. `message` is for logs only (it may
+ * A call to Keycloak, Grafana or OpenSearch failed. `message` is for logs only (it may
  * contain an excerpt of the upstream body); clients get a generic message.
  */
 export abstract class UpstreamError extends Error {

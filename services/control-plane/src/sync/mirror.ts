@@ -1,6 +1,6 @@
 /**
- * Mirrors: Keycloak and Grafana are one-way copies of the control-plane
- * DB. Each (target, aggregate) pair has exactly one MirrorHandler.
+ * Mirrors: Keycloak, Grafana and the OpenSearch security config (TODO-15:
+ * one read role per tenant) are one-way copies of the control-plane DB. Each (target, aggregate) pair has exactly one MirrorHandler.
  *
  * A handler is level-triggered and idempotent: it ignores WHAT changed,
  * reads the CURRENT row and makes the target match. Running it twice, out
@@ -8,18 +8,22 @@
  * yet": the outbox retries with backoff.
  */
 
-export type Target = 'keycloak' | 'grafana';
+export type Target = 'keycloak' | 'grafana' | 'opensearch';
 
 export type Aggregate = 'tenant' | 'user' | 'agent';
 
 /** Which mirrors care about which aggregate (one outbox row per target). */
 export const MIRROR_TARGETS: Readonly<Record<Aggregate, readonly Target[]>> = {
-  tenant: ['keycloak', 'grafana'],
+  tenant: ['keycloak', 'grafana', 'opensearch'],
   user: ['keycloak', 'grafana'],
   agent: ['keycloak'],
 };
 
-export const ALL_TARGETS: readonly Target[] = ['keycloak', 'grafana'];
+export const ALL_TARGETS: readonly Target[] = [
+  'keycloak',
+  'grafana',
+  'opensearch',
+];
 
 export const AGGREGATES: readonly Aggregate[] = ['tenant', 'user', 'agent'];
 

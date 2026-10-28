@@ -61,6 +61,19 @@ spec:
                   name: opensearch-query
                   key: password
 
+            # TODO-15: control-plane's account for the per-tenant read roles.
+            - name: SECURITY_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: opensearch-security
+                  key: username
+
+            - name: SECURITY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: opensearch-security
+                  key: password
+
           volumeMounts:
             - name: opensearch-ca
               mountPath: /etc/observability/ca
@@ -218,8 +231,7 @@ spec:
               # keeps it as a chain of backing indices; ISM rolls a new
               # backing index at 10 GB or 14 days and deletes one 30 days
               # after it was rolled over, so old logs go by whole index
-              # (cheap) instead of delete-by-query. The legacy index
-              # "otel-logs" (no suffix) is not matched and stays readable.
+              # (cheap) instead of delete-by-query.
               # Benchmark 2026-10-19: one shard on one node wrote ~4,300-
               # 4,900 logs/s while its CPU idled (waiting on disk), so each
               # stream gets 3 primaries (one per OpenSearch node) and new
@@ -419,6 +431,139 @@ spec:
                 -u "admin:${ADMIN_PASSWORD}" \
                 "${OPENSEARCH_URL}/_plugins/_security/api/internalusers/${QUERY_USERNAME}" \
                 >/dev/null
+
+              # ------------------------------------------------------------
+              # TODO-15: per-tenant read access, managed by control-plane.
+              # control-plane creates role + internal user mtco-tenant-<key>
+              # (read otel-logs-<key> only) for every tenant, with the
+              # account below; query-gateway impersonates that user for
+              # every tenant-scoped request (static setting
+              # rest_impersonation_user in the StatefulSet).
+              # ------------------------------------------------------------
+
+              # OpenSearch 3.x lets only the super admin (admin_dn TLS
+              # certificate) create or map roles that hold restapi:admin/*
+              # permissions, so the account cannot get a custom role or
+              # security_rest_api_full_access from here. Instead it is mapped
+              # to security_rest_api_access, one of
+              # plugins.security.restapi.roles_enabled: security REST API
+              # access, but it still cannot touch entities that hold
+              # restapi:admin/* permissions. This Job owns that mapping
+              # (PUT replaces it, so re-runs are idempotent).
+              echo "Creating security manager user..."
+
+              ESCAPED_SECURITY_PASSWORD=$(
+                printf '%s' "$SECURITY_PASSWORD" |
+                  sed 's/\\/\\\\/g; s/"/\\"/g'
+              )
+
+              curl -fsS \
+                --cacert "$CA" \
+                --connect-timeout 3 \
+                --max-time 10 \
+                -u "admin:${ADMIN_PASSWORD}" \
+                -H 'Content-Type: application/json' \
+                -X PUT \
+                "${OPENSEARCH_URL}/_plugins/_security/api/internalusers/${SECURITY_USERNAME}" \
+                -d "{
+                  \"password\": \"${ESCAPED_SECURITY_PASSWORD}\"
+                }" >/dev/null
+
+              echo "Mapping security manager to security_rest_api_access..."
+
+              curl -fsS \
+                --cacert "$CA" \
+                --connect-timeout 3 \
+                --max-time 10 \
+                -u "admin:${ADMIN_PASSWORD}" \
+                -H 'Content-Type: application/json' \
+                -X PUT \
+                "${OPENSEARCH_URL}/_plugins/_security/api/rolesmapping/security_rest_api_access" \
+                -d "{\"users\": [\"${SECURITY_USERNAME}\"]}" >/dev/null
+
+              # Self-test with the real account: create and delete a probe
+              # tenant user exactly like control-plane does.
+              echo "Self-test: security manager can manage tenant users..."
+
+              STATUS=$(curl -sS -o /dev/null -w '%{http_code}' \
+                --cacert "$CA" \
+                --connect-timeout 3 \
+                --max-time 10 \
+                -u "${SECURITY_USERNAME}:${SECURITY_PASSWORD}" \
+                -H 'Content-Type: application/json' \
+                -X PUT \
+                "${OPENSEARCH_URL}/_plugins/_security/api/internalusers/mtco-tenant-bootstrap-check" \
+                -d "{\"password\": \"$(head -c 24 /dev/urandom | base64 | tr -d '/+=')Aa1!\"}")
+
+              case "$STATUS" in
+                200|201) ;;
+                *) echo "  manage FAILED (user, HTTP $STATUS)"; exit 1 ;;
+              esac
+
+              # A tenant-shaped role and its mapping, as control-plane
+              # writes them.
+              security_call() {
+                curl -sS -o /dev/null -w '%{http_code}' \
+                  --cacert "$CA" \
+                  --connect-timeout 3 \
+                  --max-time 10 \
+                  -u "${SECURITY_USERNAME}:${SECURITY_PASSWORD}" \
+                  -H 'Content-Type: application/json' \
+                  "$@"
+              }
+
+              STATUS=$(security_call -X PUT \
+                "${OPENSEARCH_URL}/_plugins/_security/api/roles/mtco-tenant-bootstrap-check" \
+                -d '{"cluster_permissions": ["cluster_composite_ops_ro"], "index_permissions": [{"index_patterns": ["otel-logs-bootstrap-check"], "allowed_actions": ["read"]}]}')
+
+              case "$STATUS" in
+                200|201) ;;
+                *) echo "  manage FAILED (role, HTTP $STATUS)"; exit 1 ;;
+              esac
+
+              STATUS=$(security_call -X PUT \
+                "${OPENSEARCH_URL}/_plugins/_security/api/rolesmapping/mtco-tenant-bootstrap-check" \
+                -d '{"users": ["mtco-tenant-bootstrap-check"]}')
+
+              case "$STATUS" in
+                200|201) echo "  manage OK" ;;
+                *) echo "  manage FAILED (rolesmapping, HTTP $STATUS)"; exit 1 ;;
+              esac
+
+              echo "Self-test: query account can impersonate tenant users..."
+
+              WHO=$(curl -sS \
+                --cacert "$CA" \
+                --connect-timeout 3 \
+                --max-time 10 \
+                -u "${QUERY_USERNAME}:${QUERY_PASSWORD}" \
+                -H 'opendistro_security_impersonate_as: mtco-tenant-bootstrap-check' \
+                "${OPENSEARCH_URL}/_plugins/_security/authinfo" || true)
+
+              case "$WHO" in
+                *'"user_name":"mtco-tenant-bootstrap-check"'*) echo "  impersonation OK" ;;
+                *) echo "  impersonation FAILED (setting rest_impersonation_user missing or pods not restarted?): $(printf '%s' "$WHO" | head -c 300)"; exit 1 ;;
+              esac
+
+              curl -fsS \
+                --cacert "$CA" \
+                --connect-timeout 3 \
+                --max-time 10 \
+                -u "${SECURITY_USERNAME}:${SECURITY_PASSWORD}" \
+                -X DELETE \
+                "${OPENSEARCH_URL}/_plugins/_security/api/internalusers/mtco-tenant-bootstrap-check" >/dev/null
+
+              for KIND in rolesmapping roles; do
+                curl -fsS \
+                  --cacert "$CA" \
+                  --connect-timeout 3 \
+                  --max-time 10 \
+                  -u "${SECURITY_USERNAME}:${SECURITY_PASSWORD}" \
+                  -X DELETE \
+                  "${OPENSEARCH_URL}/_plugins/_security/api/${KIND}/mtco-tenant-bootstrap-check" >/dev/null
+              done
+
+              echo "  probe user, role and mapping removed"
 
               echo "OpenSearch bootstrap complete."
 

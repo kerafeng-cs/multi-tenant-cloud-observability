@@ -3,10 +3,11 @@
  * stores.json, env DATA_STORES_JSON). A store is one VictoriaMetrics
  * cluster (kind `metrics`) or one OpenSearch cluster (kind `logs`).
  *
- * control-plane only needs the names and whether a store is exclusive
- * (1:1: at most one tenant that is not deleted); the URLs and credential
- * names in the same file are for query-gateway. The write path is wired
- * in the otel-gateway config (one exporter per store).
+ * control-plane needs the names, whether a store is exclusive (1:1: at
+ * most one tenant that is not deleted) and, for logs stores, the URL: it
+ * manages each tenant's read role in that OpenSearch (TODO-15). The
+ * credential names in the same file are for query-gateway. The write path
+ * is wired in the otel-gateway config (one exporter per store).
  *
  *   {
  *     "metrics": { "shared": { "queryUrl": "http://vmselect:8481" } },
@@ -30,6 +31,8 @@ export interface DataStore {
   kind: DataStoreKind;
   /** 1:1 store: at most one tenant (not deleted) may use it. */
   exclusive: boolean;
+  /** Logs stores only: OpenSearch base URL (queryUrl in stores.json). */
+  url?: string;
 }
 
 export type DataStoreCatalog = Record<DataStoreKind, Record<string, DataStore>>;
@@ -41,7 +44,12 @@ export function defaultDataStores(): DataStoreCatalog {
       shared: { name: DEFAULT_DATA_STORE, kind: 'metrics', exclusive: false },
     },
     logs: {
-      shared: { name: DEFAULT_DATA_STORE, kind: 'logs', exclusive: false },
+      shared: {
+        name: DEFAULT_DATA_STORE,
+        kind: 'logs',
+        exclusive: false,
+        url: 'https://opensearch:9200',
+      },
     },
   };
 }
@@ -100,13 +108,34 @@ export function parseDataStores(
         continue;
       }
 
+      if (kind === 'logs') {
+        const url = value.queryUrl;
+
+        if (typeof url !== 'string' || !/^https?:\/\/[^/]/.test(url)) {
+          problems.push(
+            `${key}.${kind}.${name}.queryUrl must be an http(s) URL`,
+          );
+          continue;
+        }
+
+        catalog[kind][name] = {
+          name,
+          kind,
+          exclusive,
+          url: url.replace(/\/+$/, ''),
+        };
+        continue;
+      }
+
       catalog[kind][name] = { name, kind, exclusive };
     }
 
     const shared = catalog[kind][DEFAULT_DATA_STORE];
 
     if (!shared) {
-      problems.push(`${key}.${kind} must contain the "${DEFAULT_DATA_STORE}" store`);
+      problems.push(
+        `${key}.${kind} must contain the "${DEFAULT_DATA_STORE}" store`,
+      );
     } else if (shared.exclusive) {
       problems.push(
         `${key}.${kind}.${DEFAULT_DATA_STORE} cannot be exclusive (every tenant may use it)`,

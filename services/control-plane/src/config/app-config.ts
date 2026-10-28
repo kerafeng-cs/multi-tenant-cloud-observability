@@ -69,6 +69,16 @@ export interface AppConfigValues {
   /** TODO-28: data stores tenants can be placed in (DATA_STORES_JSON). */
   dataStores: DataStoreCatalog;
 
+  /**
+   * TODO-15: OpenSearch account (same in every logs store) that manages
+   * the per-tenant read roles. Empty = not configured: the OpenSearch
+   * mirror fails (retried, visible in /sync/status) until it is set.
+   */
+  opensearchSecurity: {
+    username: string;
+    password: string;
+  };
+
   platformAdmin: {
     username: string;
     email: string;
@@ -116,6 +126,7 @@ export class AppConfig implements AppConfigValues {
   declare readonly grafana: AppConfigValues['grafana'];
   declare readonly queryGatewayUrl: string;
   declare readonly dataStores: DataStoreCatalog;
+  declare readonly opensearchSecurity: AppConfigValues['opensearchSecurity'];
   declare readonly platformAdmin: AppConfigValues['platformAdmin'];
   declare readonly supportAccess: AppConfigValues['supportAccess'];
   declare readonly resyncIntervalMs: number;
@@ -175,6 +186,11 @@ export class AppConfig implements AppConfigValues {
       ),
 
       dataStores: reader.dataStores('DATA_STORES_JSON'),
+
+      opensearchSecurity: {
+        username: reader.optional('OPENSEARCH_SECURITY_USERNAME', ''),
+        password: reader.optional('OPENSEARCH_SECURITY_PASSWORD', '', false),
+      },
 
       platformAdmin: {
         username: reader.optional('PLATFORM_ADMIN_USERNAME', ''),
@@ -247,6 +263,7 @@ export class AppConfig implements AppConfigValues {
       },
       queryGatewayUrl: 'http://query-gateway:8080',
       dataStores: defaultDataStores(),
+      opensearchSecurity: { username: 'mtco-security', password: 'pw' },
       platformAdmin: {
         username: '',
         email: '',

@@ -35,8 +35,75 @@ const FORBIDDEN_BODY_KEYS = new Set(['suggest']);
  */
 const FORBIDDEN_QUERY_PARAMS = ['q', 'source', 'source_content_type'];
 
+/** Tenant keys (Keycloak group names); they become index and user names. */
+const TENANT_KEY = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+/**
+ * TODO-15: OpenSearch header that runs a request as another internal user.
+ * The OpenSearch setting plugins.security.authcz.rest_impersonation_user
+ * allows only the query-gateway account, and only for mtco-tenant-*.
+ */
+export const IMPERSONATE_HEADER = 'opendistro_security_impersonate_as';
+
+/** The tenant's own data stream (written by otel-gateway). */
+export function tenantIndex(tenantId: string): string {
+  assertTenantKey(tenantId);
+  return `otel-logs-${tenantId}`;
+}
+
+/**
+ * The OpenSearch user (role of the same name, managed by control-plane)
+ * that may read only tenantIndex(tenantId).
+ */
+export function tenantPrincipal(tenantId: string): string {
+  assertTenantKey(tenantId);
+  return `mtco-tenant-${tenantId}`;
+}
+
+function assertTenantKey(tenantId: string): void {
+  if (!TENANT_KEY.test(tenantId)) {
+    throw new ForbiddenException('Invalid tenant');
+  }
+}
+
 @Injectable()
 export class OpenSearchTenantService {
+  /**
+   * TODO-15: the path OpenSearch gets for a request scoped to a tenant.
+   * Whatever index the client named (otel-logs*, another tenant's stream,
+   * none), the request goes to the tenant's own data stream only. Call
+   * after enforce() (which accepted the endpoint); the query string is
+   * kept, plus ignore_unavailable=true: a tenant that has not sent any
+   * log yet has no stream, and gets an empty answer instead of a 404
+   * (as it did with otel-logs*).
+   */
+  tenantPath(clientPath: string, tenantId: string): string {
+    const index = tenantIndex(tenantId);
+    const at = clientPath.indexOf('?');
+    const path = at < 0 ? clientPath : clientPath.slice(0, at);
+    const query = at < 0 ? '' : clientPath.slice(at);
+
+    if (path.startsWith('/_resolve/index/')) {
+      return `/_resolve/index/${index}${query}`;
+    }
+
+    const endpoint = path.split('/').filter(Boolean).pop();
+
+    if (
+      !endpoint ||
+      !['_search', '_msearch', '_field_caps', '_mapping'].includes(endpoint)
+    ) {
+      throw new ForbiddenException(
+        'OpenSearch endpoint is not allowed through query gateway',
+      );
+    }
+
+    const params = new URLSearchParams(query);
+    params.set('ignore_unavailable', 'true');
+
+    return `/${index}/${endpoint}?${params.toString()}`;
+  }
+
   enforce(req: Request, tenantId: string | null, platformAdmin: boolean): void {
     const method = req.method.toUpperCase();
 
@@ -222,7 +289,8 @@ export class OpenSearchTenantService {
 
       const query = this.parseNdjsonLine(lines[i + 1]);
 
-      header.index = 'otel-logs*';
+      header.index = tenantIndex(tenantId);
+      header.ignore_unavailable = true;
 
       output.push(JSON.stringify(header));
       output.push(JSON.stringify(this.applyTenantFilter(query, tenantId)));

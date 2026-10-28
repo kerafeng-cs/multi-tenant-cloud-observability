@@ -129,6 +129,24 @@ spec:
                   name: data-stores
                   key: stores.json
 
+            # TODO-15: account that manages the per-tenant read roles in
+            # every logs store (mapping security_rest_api_access, created by the
+            # OpenSearch bootstrap Job), and the CA of those stores.
+            - name: OPENSEARCH_SECURITY_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: opensearch-security
+                  key: username
+
+            - name: OPENSEARCH_SECURITY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: opensearch-security
+                  key: password
+
+            - name: NODE_EXTRA_CA_CERTS
+              value: /etc/observability/ca/ca.crt
+
             # Human JWT verification.
             - name: KEYCLOAK_ISSUER
               valueFrom:
@@ -246,6 +264,11 @@ spec:
                   name: control-plane-db
                   key: password
 
+          volumeMounts:
+            - name: opensearch-ca
+              mountPath: /etc/observability/ca
+              readOnly: true
+
           resources:
             requests:
               cpu: 100m
@@ -258,3 +281,10 @@ spec:
         - name: migrations
           configMap:
             name: control-plane-db-migrations
+
+        - name: opensearch-ca
+          secret:
+            secretName: opensearch-tls
+            items:
+              - key: ca.crt
+                path: ca.crt

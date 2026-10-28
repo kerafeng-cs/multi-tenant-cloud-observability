@@ -31,6 +31,12 @@ secretGenerator:
     envs:
       - opensearch-query.env
 
+  # TODO-15: control-plane's account for the per-tenant read roles
+  # (same account in every logs store).
+  - name: opensearch-security
+    envs:
+      - opensearch-security.env
+
   - name: keycloak-db
     envs:
       - keycloak-db.env
@@ -96,11 +102,11 @@ configMapGenerator:
 images:
   - name: query-gateway
     newName: kerafeng/query-gateway
-    newTag: v0.1.16
+    newTag: v0.1.17
 
   - name: control-plane
     newName: kerafeng/control-plane
-    newTag: v0.12.0
+    newTag: v0.13.0
 
 patches:
   - target:
