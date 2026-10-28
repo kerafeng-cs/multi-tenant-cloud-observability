@@ -72,7 +72,6 @@ function setup(opts: {
   const users = {
     findById: jest.fn().mockResolvedValue(opts.owner ?? null),
     setKeycloakUserId: jest.fn().mockResolvedValue(undefined),
-    setNames: jest.fn().mockResolvedValue(undefined),
   };
 
   const tenants = {
@@ -149,14 +148,18 @@ describe('KeycloakUserMirror (active user)', () => {
   });
 
   it('never deletes an existing account whose marker check fails (only fresh creates)', async () => {
+    // An orphan of a deleted row: adopted, re-marked, but the marker is dropped.
     const { mirror, keycloak } = setup({
-      stored: account({ id: 'kc-viewer', attributes: null }),
-      saved: account({ id: 'kc-viewer', attributes: null }),
+      byName: account({
+        id: 'kc-old',
+        attributes: { mtco_user_id: [IDS.betaAdmin] },
+      }),
+      saved: account({ id: 'kc-old', attributes: null }),
     });
 
-    await expect(
-      mirror.apply(user({ keycloakUserId: 'kc-viewer' })),
-    ).rejects.toThrow(/ADMIN_EDIT/);
+    await expect(mirror.apply(user({ keycloakUserId: null }))).rejects.toThrow(
+      /ADMIN_EDIT/,
+    );
     expect(keycloak.deleteUser).not.toHaveBeenCalled();
   });
 
@@ -169,40 +172,13 @@ describe('KeycloakUserMirror (active user)', () => {
     ).rejects.toBeInstanceOf(ConflictError);
   });
 
-  it('adopts a legacy account by stored id (adds the marker, keeps everything else)', async () => {
-    const legacy = account({ attributes: null });
-    const { mirror, keycloak } = setup({
-      stored: legacy,
-      groups: [{ id: 'g-alpha', name: 'alpha-tenant' }],
-      roles: ['viewer', 'default-roles-observability'],
-    });
+  it('stored id pointing at an unmarked account → not ours: refuses', async () => {
+    const unmarked = account({ attributes: null });
+    const { mirror, keycloak } = setup({ stored: unmarked, byName: unmarked });
 
-    await mirror.apply(user());
-
-    expect(keycloak.updateUser).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: 'kc-viewer',
-        attributes: { mtco_user_id: [IDS.alphaViewer] },
-      }),
-    );
-    expect(keycloak.createUser).not.toHaveBeenCalled();
-    expect(keycloak.addUserToGroup).not.toHaveBeenCalled();
-    expect(keycloak.addUserRealmRoles).toHaveBeenCalledWith('kc-viewer', []);
-    expect(keycloak.removeUserRealmRoles).toHaveBeenCalledWith('kc-viewer', []);
-  });
-
-  it('takes over names from Keycloak for rows created before migration 005', async () => {
-    const { mirror, users, keycloak } = setup({ stored: account() });
-
-    await mirror.apply(user({ firstName: null, lastName: null }));
-
-    expect(users.setNames).toHaveBeenCalledWith(
-      IDS.alphaViewer,
-      'Alice',
-      'A',
-      undefined,
-    );
+    await expect(mirror.apply(user())).rejects.toBeInstanceOf(ConflictError);
     expect(keycloak.updateUser).not.toHaveBeenCalled();
+    expect(keycloak.createUser).not.toHaveBeenCalled();
   });
 
   it('enforces exactly one tenant group and exactly the row role', async () => {
@@ -322,14 +298,19 @@ describe('KeycloakUserMirror (deleted user)', () => {
     );
   });
 
-  it('cleans a legacy orphan (stored id, no marker, same username) — I-21', async () => {
-    const { mirror, keycloak } = setup({
+  it('never deletes an unmarked account, even by stored id', async () => {
+    const { mirror, keycloak, users } = setup({
       stored: account({ attributes: null }),
     });
 
     await mirror.apply(user({ status: 'deleted' }));
 
-    expect(keycloak.deleteUser).toHaveBeenCalledWith('kc-viewer');
+    expect(keycloak.deleteUser).not.toHaveBeenCalled();
+    expect(users.setKeycloakUserId).toHaveBeenCalledWith(
+      IDS.alphaViewer,
+      null,
+      undefined,
+    );
   });
 
   it('never deletes an account adopted by another row', async () => {

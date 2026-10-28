@@ -43,15 +43,6 @@ export interface KcClientScope {
   [key: string]: unknown;
 }
 
-export interface KcProtocolMapper {
-  id?: string;
-  name: string;
-  protocol: string;
-  protocolMapper: string;
-  consentRequired?: boolean;
-  config: Record<string, string>;
-}
-
 /** Ownership markers (CLAUDE.md §18.3.7). */
 export const TENANT_MARKER = 'mtco_tenant_id';
 export const USER_MARKER = 'mtco_user_id';

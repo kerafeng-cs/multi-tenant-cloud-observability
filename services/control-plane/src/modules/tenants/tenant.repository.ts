@@ -91,9 +91,11 @@ export class TenantRepository extends BaseRepository<TenantRow, TenantRecord> {
     kind: DataStoreKind,
     store: string,
   ): Promise<void> {
-    await this.exec(`SELECT pg_advisory_xact_lock(hashtext($1))`, [
-      `mtco-data-store:${kind}:${store}`,
-    ], q);
+    await this.exec(
+      `SELECT pg_advisory_xact_lock(hashtext($1))`,
+      [`mtco-data-store:${kind}:${store}`],
+      q,
+    );
   }
 
   /** Tenants (not deleted) placed in a store. */

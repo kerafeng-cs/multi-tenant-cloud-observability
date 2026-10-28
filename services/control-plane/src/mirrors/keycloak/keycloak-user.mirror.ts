@@ -69,27 +69,11 @@ export class KeycloakUserMirror implements MirrorHandler {
     const groupId = await this.desiredGroupId(user);
     const existing = await this.resolveForWrite(user);
 
-    /*
-     * Rows created before migration 005 have no names: take them over from
-     * Keycloak once instead of erasing them there.
-     */
-    let firstName = user.firstName;
-    let lastName = user.lastName;
-
-    if (existing && (firstName === null || lastName === null)) {
-      firstName ??= existing.firstName ?? null;
-      lastName ??= existing.lastName ?? null;
-
-      if (firstName !== user.firstName || lastName !== user.lastName) {
-        await this.users.setNames(user.id, firstName, lastName, options.q);
-      }
-    }
-
     const desired = {
       username: user.username,
       email: user.email,
-      firstName: firstName ?? undefined,
-      lastName: lastName ?? undefined,
+      firstName: user.firstName ?? undefined,
+      lastName: user.lastName ?? undefined,
       enabled: user.enabled,
       emailVerified: true,
     };
@@ -308,13 +292,7 @@ export class KeycloakUserMirror implements MirrorHandler {
       return null;
     }
 
-    const marker = attr(account.attributes, USER_MARKER);
-
-    return marker === user.id ||
-      (!marker &&
-        account.username.toLowerCase() === user.username.toLowerCase())
-      ? account
-      : null;
+    return attr(account.attributes, USER_MARKER) === user.id ? account : null;
   }
 }
 

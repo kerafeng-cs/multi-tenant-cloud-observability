@@ -80,24 +80,17 @@ describe('KeycloakTenantMirror (active tenant)', () => {
     );
   });
 
-  it('adopts the legacy group by stored id: adds the marker, drops mtco_tenant', async () => {
-    const { mirror, keycloak, tenants } = setup({
-      byId: {
-        id: 'g-alpha',
-        name: 'alpha-tenant',
-        attributes: { vm_account_id: ['2'], mtco_tenant: ['true'] },
-      },
-    });
-
-    await mirror.apply(tenant());
-
-    expect(keycloak.updateGroup).toHaveBeenCalledWith({
+  it('stored id pointing at an unmarked group → not ours: refuses', async () => {
+    const unmarked = {
       id: 'g-alpha',
       name: 'alpha-tenant',
-      attributes: desiredAttributes,
-    });
+      attributes: { vm_account_id: ['2'] },
+    };
+    const { mirror, keycloak } = setup({ byId: unmarked, byName: unmarked });
+
+    await expect(mirror.apply(tenant())).rejects.toBeInstanceOf(ConflictError);
+    expect(keycloak.updateGroup).not.toHaveBeenCalled();
     expect(keycloak.createGroup).not.toHaveBeenCalled();
-    expect(tenants.setKeycloakGroupId).not.toHaveBeenCalled();
   });
 
   it('does nothing when already converged', async () => {

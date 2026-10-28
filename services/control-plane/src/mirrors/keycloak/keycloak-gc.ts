@@ -42,7 +42,7 @@ interface Orphan {
  * (closes I-20 / TODO-07): agent clients `otel-agent-<id>` without a live
  * agent or an open enrollment, users marked mtco_user_id and groups marked
  * mtco_tenant_id whose row is gone or deleted. Sources: rolled-back inline
- * creates, v0.6 leftovers, manual mistakes. Objects without our marker or
+ * creates, manual mistakes. Objects without our marker or
  * prefix are never touched.
  *
  * Safety: an object is deleted only when it is orphaned on two runs at

@@ -30,17 +30,6 @@ export interface AgentCredentials {
 export const AGENT_CLIENT_SCOPE = 'mtco-agent';
 
 /**
- * v0.6–v0.8 created these 4 mappers on every agent client (I-33). The
- * mirror removes them once the client has the scope (claims unchanged).
- */
-export const LEGACY_AGENT_MAPPERS = [
-  'otel-gateway-audience',
-  'agent-id',
-  'tenant-id',
-  'vm-account-id',
-];
-
-/**
  * Agent → confidential Keycloak client `otel-agent-<id>` (service account
  * only). active → enabled, disabled → disabled, revoked → deleted.
  * Credentials are issued inline by the enrollment exchange (the secret is
@@ -158,9 +147,7 @@ export class KeycloakAgentMirror implements MirrorHandler {
 
   /**
    * The claims of the agent's tokens: service-account attributes (read by
-   * the scope's mappers) + the mtco-agent scope; then the legacy
-   * per-client mappers go (scope FIRST, so no token is ever minted
-   * without the claims).
+   * the scope's mappers) + the mtco-agent scope.
    */
   private async ensureClaims(
     agent: AgentRecord,
@@ -195,20 +182,6 @@ export class KeycloakAgentMirror implements MirrorHandler {
 
     if (!scopes.some((scope) => scope.name === AGENT_CLIENT_SCOPE)) {
       await this.addScope(clientUuid);
-    }
-
-    const legacy = (await this.keycloak.getProtocolMappers(clientUuid)).filter(
-      (mapper) => mapper.id && LEGACY_AGENT_MAPPERS.includes(mapper.name),
-    );
-
-    for (const mapper of legacy) {
-      await this.keycloak.deleteProtocolMapper(clientUuid, mapper.id as string);
-    }
-
-    if (legacy.length > 0) {
-      this.logger.log(
-        `Agent ${agent.id}: moved to client scope ${AGENT_CLIENT_SCOPE} (${legacy.length} legacy mapper(s) removed)`,
-      );
     }
   }
 

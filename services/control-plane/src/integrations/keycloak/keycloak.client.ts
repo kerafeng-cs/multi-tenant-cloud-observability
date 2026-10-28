@@ -9,7 +9,6 @@ import type {
   KcClient,
   KcClientScope,
   KcGroup,
-  KcProtocolMapper,
   KcRole,
   KcUser,
 } from './keycloak.types';
@@ -376,34 +375,8 @@ export class KeycloakClient extends UpstreamClient {
     return secret.value;
   }
 
-  getProtocolMappers(uuid: string): Promise<KcProtocolMapper[]> {
-    return this.json<KcProtocolMapper[]>({
-      method: 'GET',
-      path: `${this.admin}/clients/${encodeURIComponent(uuid)}/protocol-mappers/models`,
-    });
-  }
-
-  async createProtocolMapper(
-    uuid: string,
-    mapper: KcProtocolMapper,
-  ): Promise<void> {
-    await this.request({
-      method: 'POST',
-      path: `${this.admin}/clients/${encodeURIComponent(uuid)}/protocol-mappers/models`,
-      body: mapper,
-    });
-  }
-
-  async deleteProtocolMapper(uuid: string, mapperId: string): Promise<void> {
-    await this.request({
-      method: 'DELETE',
-      path: `${this.admin}/clients/${encodeURIComponent(uuid)}/protocol-mappers/models/${encodeURIComponent(mapperId)}`,
-      accept: [404],
-    });
-  }
-
   // ------------------------------------------------------------------
-  // Client scopes (v0.9: the shared agent claims, scope mtco-agent)
+  // Client scopes (the shared agent claims, scope mtco-agent)
   // ------------------------------------------------------------------
 
   async findClientScope(name: string): Promise<KcClientScope | null> {

@@ -351,7 +351,11 @@ describe('tenants', () => {
     });
     expect(mocks.tenants.create).toHaveBeenCalledWith(
       expect.objectContaining({ username: 'root-admin' }),
-      { tenantKey: 'gamma-tenant', metricsStore: undefined, logsStore: undefined },
+      {
+        tenantKey: 'gamma-tenant',
+        metricsStore: undefined,
+        logsStore: undefined,
+      },
     );
   });
 
@@ -362,10 +366,11 @@ describe('tenants', () => {
       logsStore: 'shared',
     }).expect(201);
 
-    expect(mocks.tenants.create).toHaveBeenLastCalledWith(
-      expect.anything(),
-      { tenantKey: 'gamma-tenant', metricsStore: 'dedicated-1', logsStore: 'shared' },
-    );
+    expect(mocks.tenants.create).toHaveBeenLastCalledWith(expect.anything(), {
+      tenantKey: 'gamma-tenant',
+      metricsStore: 'dedicated-1',
+      logsStore: 'shared',
+    });
 
     const calls = mocks.tenants.create.mock.calls.length;
 
@@ -377,7 +382,9 @@ describe('tenants', () => {
     expect(res.body).toMatchObject({
       error: {
         code: 'validation_failed',
-        details: [expect.objectContaining({ field: 'metricsStore' })] as unknown,
+        details: [
+          expect.objectContaining({ field: 'metricsStore' }),
+        ] as unknown,
       },
     });
     expect(mocks.tenants.create.mock.calls.length).toBe(calls);

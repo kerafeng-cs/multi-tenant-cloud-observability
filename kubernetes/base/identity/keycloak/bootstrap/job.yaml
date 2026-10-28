@@ -881,10 +881,7 @@ spec:
               # every agent client (otel-agent-<id>). Its 4 mappers put the
               # FROZEN agent claims into client_credentials tokens: aud
               # otel-gateway + agent_id, tenant_id, vm_account_id from the
-              # service-account user attributes. Until v0.8 the same mappers
-              # were created on each client; control-plane moves existing
-              # clients to the scope and deletes those copies (I-33).
-              # Mapper config must stay identical to what v0.8 created.
+              # service-account user attributes.
               echo "Ensuring agent client scope..."
 
               AGENT_SCOPE_NAME=mtco-agent

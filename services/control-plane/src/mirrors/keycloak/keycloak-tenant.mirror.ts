@@ -16,9 +16,6 @@ import {
 } from '../../modules/tenants/tenant.repository';
 import type { MirrorHandler } from '../../sync/mirror';
 
-/** Written by v0.6 and earlier; replaced by the ownership marker. */
-const LEGACY_ATTRIBUTE = 'mtco_tenant';
-
 /**
  * Tenant → top-level Keycloak group (FROZEN contract, CLAUDE.md §18.3.5):
  * name = tenantKey, attribute vm_account_id = [n] (aggregated into the
@@ -75,7 +72,7 @@ export class KeycloakTenantMirror implements MirrorHandler {
     const group = await this.resolveForWrite(tenant);
 
     const attributes: Attributes = {
-      ...withoutKey(group?.attributes, LEGACY_ATTRIBUTE),
+      ...(group?.attributes ?? {}),
       vm_account_id: [tenant.vmAccountId],
       metrics_store: [tenant.metricsStore],
       logs_store: [tenant.logsStore],
@@ -180,21 +177,8 @@ export class KeycloakTenantMirror implements MirrorHandler {
       return null;
     }
 
-    const marker = attr(group.attributes, TENANT_MARKER);
-
-    return marker === tenant.id || (!marker && group.name === tenant.tenantKey)
-      ? group
-      : null;
+    return attr(group.attributes, TENANT_MARKER) === tenant.id ? group : null;
   }
-}
-
-function withoutKey(
-  attributes: Attributes | undefined,
-  key: string,
-): Attributes {
-  const copy: Attributes = { ...(attributes ?? {}) };
-  delete copy[key];
-  return copy;
 }
 
 function sameAttributes(

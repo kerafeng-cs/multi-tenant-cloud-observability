@@ -106,7 +106,7 @@ images:
 
   - name: control-plane
     newName: kerafeng/control-plane
-    newTag: v0.13.0
+    newTag: v0.13.1
 
 patches:
   - target:

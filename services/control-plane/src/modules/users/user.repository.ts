@@ -158,19 +158,6 @@ export class UserRepository extends BaseRepository<UserRow, UserRecord> {
     );
   }
 
-  async setNames(
-    id: string,
-    firstName: string | null,
-    lastName: string | null,
-    q?: Queryable,
-  ): Promise<void> {
-    await this.exec(
-      `UPDATE users SET first_name = $2, last_name = $3 WHERE id = $1`,
-      [id, firstName, lastName],
-      q,
-    );
-  }
-
   async setKeycloakUserId(
     id: string,
     keycloakUserId: string | null,

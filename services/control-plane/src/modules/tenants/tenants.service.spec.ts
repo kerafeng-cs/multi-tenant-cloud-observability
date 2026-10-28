@@ -141,7 +141,11 @@ describe('TenantsService.create (data stores, TODO-28)', () => {
       metricsStore: 'dedicated-1',
     });
 
-    expect(tenants.lockStore).toHaveBeenCalledWith(tx, 'metrics', 'dedicated-1');
+    expect(tenants.lockStore).toHaveBeenCalledWith(
+      tx,
+      'metrics',
+      'dedicated-1',
+    );
     expect(tenants.countInStore).toHaveBeenCalledWith(
       tx,
       'metrics',
